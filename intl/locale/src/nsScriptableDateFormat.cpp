@@ -5,6 +5,7 @@
 
 #include "nsIServiceManager.h"
 #include "nsIComponentManager.h"
+#include "nsLocaleCID.h"
 #include "nsILocaleService.h"
 #include "nsDateTimeFormatCID.h"
 #include "nsIDateTimeFormat.h"

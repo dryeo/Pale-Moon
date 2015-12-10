@@ -13,6 +13,7 @@
 #include "nsILocale.h"
 #include "nsILocaleService.h"
 #include "nsLocale.h"
+#include "nsLocaleCID.h"
 #include "nsServiceManagerUtils.h"
 #include "nsReadableUtils.h"
 #include "nsCRT.h"
