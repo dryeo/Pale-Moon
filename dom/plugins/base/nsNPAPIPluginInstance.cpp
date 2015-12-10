@@ -690,7 +690,7 @@ nsresult nsNPAPIPluginInstance::HandleEvent(void* event, int16_t* result,
 
   if (pluginFunctions->event) {
     mCurrentPluginEvent = event;
-#if defined(XP_WIN)
+#if defined(XP_WIN) || defined(XP_OS2)
     NS_TRY_SAFE_CALL_RETURN(tmpResult, (*pluginFunctions->event)(&mNPP, event), this,
                             aSafeToReenterGoanna);
 #else

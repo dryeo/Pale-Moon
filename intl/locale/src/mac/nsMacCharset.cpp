@@ -8,6 +8,7 @@
 #include "pratom.h"
 #include "nsCOMPtr.h"
 #include "nsIServiceManager.h"
+#include "nsLocaleCID.h"
 #include "nsReadableUtils.h"
 #include "nsPlatformCharset.h"
 #include "nsEncoderDecoderUtils.h"

@@ -8,6 +8,7 @@
 #include "nsDateTimeFormatMac.h"
 #include <CoreFoundation/CFDateFormatter.h>
 #include "nsIComponentManager.h"
+#include "nsLocaleCID.h"
 #include "nsILocaleService.h"
 #include "nsCRT.h"
 #include "plstr.h"

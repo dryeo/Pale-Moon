@@ -22,6 +22,9 @@
 #include "jslock.h"
 #include "prmjtime.h"
 
+#ifdef XP_OS2
+#include <sys/timeb.h>
+#endif
 #ifdef XP_WIN
 #define NS_HAVE_INVALID_PARAMETER_HANDLER 1
 
@@ -49,7 +52,17 @@ extern int gettimeofday(struct timeval *tv);
 
 using mozilla::DebugOnly;
 
-#if defined(XP_UNIX)
+
+#if defined(XP_OS2)
+int64_t
+PRMJ_Now(void)
+{
+    struct timeb b;
+    ftime(&b);
+    return (int64_t(b.time) * PRMJ_USEC_PER_SEC) + (int64_t(b.millitm) * PRMJ_USEC_PER_MSEC);
+}
+
+#elif defined(XP_UNIX)
 int64_t
 PRMJ_Now()
 {
@@ -282,7 +295,7 @@ size_t
 PRMJ_FormatTime(char *buf, int buflen, const char *fmt, PRMJTime *prtm)
 {
     size_t result = 0;
-#if defined(XP_UNIX) || defined(XP_WIN)
+#if defined(XP_UNIX) || defined(XP_WIN) || defined(XP_OS2)
     struct tm a;
     int fake_tm_year = 0;
 #ifdef NS_HAVE_INVALID_PARAMETER_HANDLER
