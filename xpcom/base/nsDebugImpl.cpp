@@ -23,7 +23,7 @@
 #include <android/log.h>
 #endif
 
-#if defined(XP_UNIX) || defined(_WIN32)
+#if defined(XP_UNIX) || defined(_WIN32) || defined(XP_OS2)
 /* for abort() and getenv() */
 #include <stdlib.h>
 #endif
@@ -57,6 +57,12 @@ RealBreak();
 
 static void
 Break(const char *aMsg);
+
+#if defined(XP_OS2)
+#  define INCL_WINDIALOGS  // need for WinMessageBox
+#  include <os2.h>
+#  include <string.h>
+#endif /* XP_OS2 */
 
 #if defined(_WIN32)
 #include <windows.h>
@@ -205,7 +211,7 @@ static nsAssertBehavior GetAssertBehavior()
   if (gAssertBehavior != NS_ASSERT_UNINITIALIZED)
     return gAssertBehavior;
 
-#if defined(XP_WIN)
+#if defined(XP_WIN) || defined(XP_OS2)
   gAssertBehavior = NS_ASSERT_TRAP;
 #else
   gAssertBehavior = NS_ASSERT_WARN;
@@ -332,7 +338,7 @@ NS_DebugBreak(uint32_t aSeverity, const char *aStr, const char *aExpr,
    PR_LogFlush();
 
    // errors on platforms without a debugdlg ring a bell on stderr
-#if !defined(XP_WIN)
+#if !defined(XP_WIN) && !defined(XP_OS2)
    if (ll != PR_LOG_WARNING)
      fprintf(stderr, "\07");
 #endif
@@ -412,6 +418,8 @@ RealBreak()
 {
 #if defined(_WIN32)
   ::DebugBreak();
+#elif defined(XP_OS2)
+   asm("int $3");
 #elif defined(XP_MACOSX)
    raise(SIGTRAP);
 #elif defined(__GNUC__) && (defined(__i386__) || defined(__i386) || defined(__x86_64__))
@@ -498,6 +506,28 @@ Break(const char *aMsg)
   }
 
   RealBreak();
+#elif defined(XP_OS2)
+   char msg[1200];
+   PR_snprintf(msg, sizeof(msg),
+               "%s\n\nClick Cancel to Debug Application.\n"
+               "Click Enter to continue running the Application.", aMsg);
+   ULONG code = MBID_ERROR;
+   code = WinMessageBox(HWND_DESKTOP, HWND_DESKTOP, msg, 
+                        "NSGlue_Assertion", 0,
+                        MB_ERROR | MB_ENTERCANCEL);
+
+   /* It is possible that we are executing on a thread that doesn't have a
+    * message queue.  In that case, the message won't appear, and code will
+    * be 0xFFFF.  We'll give the user a chance to debug it by calling
+    * Break()
+    * Actually, that's a really bad idea since this happens a lot with threadsafe
+    * assertions and since it means that you can't actually run the debug build
+    * outside a debugger without it crashing constantly.
+    */
+   if (( code == MBID_ENTER ) || (code == MBID_ERROR))
+     return;
+
+   RealBreak();
 #elif defined(XP_MACOSX)
    /* Note that we put this Mac OS X test above the GNUC/x86 test because the
     * GNUC/x86 test is also true on Intel Mac OS X and we want the PPC/x86
