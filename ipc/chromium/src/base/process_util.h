@@ -8,6 +8,10 @@
 #ifndef BASE_PROCESS_UTIL_H_
 #define BASE_PROCESS_UTIL_H_
 
+#if defined(OS_OS2)
+#define INCL_DOSPROFILE
+#endif
+
 #include "base/basictypes.h"
 
 #if defined(OS_WIN)
@@ -19,6 +23,9 @@
 #include <sys/types.h>
 #elif defined(OS_MACOSX)
 #include <mach/mach.h>
+#elif defined(OS_OS2)
+#define INCL_BASE
+#include <os2.h>
 #endif
 
 #include <map>
@@ -113,7 +120,7 @@ void CloseProcessHandle(ProcessHandle process);
 // Win XP SP1 as well.
 ProcessId GetProcId(ProcessHandle process);
 
-#if defined(OS_POSIX)
+#if defined(OS_POSIX) && !defined(OS_OS2)
 // Sets all file descriptors to close on exec except for stdin, stdout
 // and stderr.
 // TODO(agl): remove this function
@@ -165,7 +172,8 @@ bool LaunchApp(const std::wstring& cmdline,
 typedef std::vector<std::pair<int, int> > file_handle_mapping_vector;
 bool LaunchApp(const std::vector<std::string>& argv,
                const file_handle_mapping_vector& fds_to_remap,
-               bool wait, ProcessHandle* process_handle);
+               bool wait, ProcessHandle* process_handle,
+               ProcessArchitecture arch=GetCurrentProcessArchitecture());
 
 typedef std::map<std::string, std::string> environment_map;
 bool LaunchApp(const std::vector<std::string>& argv,
@@ -324,6 +332,10 @@ class NamedProcessIterator {
 #elif defined(OS_MACOSX)
   std::vector<kinfo_proc> kinfo_procs_;
   size_t index_of_kinfo_proc_;
+#elif defined(OS_OS2)
+  char *sys_state;
+  enum { SysStateSize = 64 * 1024 };
+  QSPREC *proc_rec;
 #endif
 #if !defined(OS_BSD) || defined(__GLIBC__)
   ProcessEntry entry_;

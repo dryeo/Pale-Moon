@@ -18,6 +18,10 @@
 #include "nsDependentSubstring.h"
 #include "third_party/libevent/event.h"
 
+#if defined(OS_OS2)
+#include "base/os2_pipe.h"
+#endif
+
 // Lifecycle of struct event
 // Libevent uses two main data structures:
 // struct event_base (of which there is one per message pump), and

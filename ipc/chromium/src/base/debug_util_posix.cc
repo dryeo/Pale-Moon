@@ -142,7 +142,14 @@ bool DebugUtil::BeingDebugged() {
   return pid_index < status.size() && status[pid_index] != '0';
 }
 
-#endif  // OS_LINUX
+#elif defined(OS_OS2)
+
+bool DebugUtil::BeingDebugged() {
+  // @todo later
+  return false;
+}
+
+#endif
 
 // static
 void DebugUtil::BreakDebugger() {

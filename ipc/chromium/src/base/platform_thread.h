@@ -21,6 +21,13 @@ typedef DWORD PlatformThreadId;
 typedef void* PlatformThreadHandle;  // HANDLE
 #elif defined(OS_POSIX)
 #include <pthread.h>
+#if defined(OS_OS2)
+#define INCL_BASE
+#define INCL_PM
+#include <os2.h>
+typedef LHANDLE PlatformThreadId;
+typedef LHANDLE PlatformThreadHandle;
+#else
 typedef pthread_t PlatformThreadHandle;
 #if defined(OS_LINUX) || defined(OS_OPENBSD) || defined(__GLIBC__)
 #include <unistd.h>
@@ -31,6 +38,7 @@ typedef lwpid_t PlatformThreadId;
 #elif defined(OS_MACOSX)
 #include <mach/mach.h>
 typedef mach_port_t PlatformThreadId;
+#endif
 #endif
 #endif
 

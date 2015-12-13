@@ -28,6 +28,7 @@
 
 namespace base {
 
+#if !defined(OS_OS2)
 int SysInfo::NumberOfProcessors() {
   // It seems that sysconf returns the number of "logical" processors on both
   // mac and linux.  So we get the number of "online logical" processors.
@@ -86,6 +87,7 @@ int64_t SysInfo::AmountOfPhysicalMemory() {
   return static_cast<int64_t>(pages) * page_size;
 #endif
 }
+#endif // !defined(OS_OS2)
 
 // static
 int64_t SysInfo::AmountOfFreeDiskSpace(const std::wstring& path) {
@@ -134,7 +136,12 @@ std::string SysInfo::OperatingSystemVersion() {
     NOTREACHED();
     return "";
   }
+#if defined(OS_OS2)
+  // on OS/2 EMX, release is always "1" and version cotanis "2.xx"
+  return std::string(info.version);
+#else
   return std::string(info.release);
+#endif
 }
 
 // static

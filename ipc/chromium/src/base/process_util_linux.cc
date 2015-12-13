@@ -13,6 +13,10 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 
+#ifdef OS_OS2
+#include <process.h>
+#endif
+
 #include "base/debug_util.h"
 #include "base/eintr_wrapper.h"
 #include "base/file_util.h"
@@ -39,7 +43,7 @@
 # define CHILD_UNPRIVILEGED_GID 65534
 #endif
 
-#ifdef ANDROID
+#if defined(ANDROID) || defined(OS_OS2)
 #include <pthread.h>
 /*
  * Currently, PR_DuplicateEnvironment is implemented in
@@ -50,8 +54,10 @@
 #include "plstr.h"
 #include "prenv.h"
 #include "prmem.h"
+#if !defined(OS_OS2)
 /* Temporary until we have PR_DuplicateEnvironment in prenv.h */
 extern "C" { NSPR_API(pthread_mutex_t *)PR_GetEnvLock(void); }
+#endif
 #endif
 
 namespace {
@@ -68,9 +74,10 @@ static mozilla::EnvironmentLog gProcessLog("MOZ_PROCESS_LOG");
 namespace base {
 
 #ifdef HAVE_PR_DUPLICATE_ENVIRONMENT
-/* 
- * I tried to put PR_DuplicateEnvironment down in mozglue, but on android 
- * this winds up failing because the strdup/free calls wind up mismatching. 
+#if !defined(OS_OS2)
+/*
+ * I tried to put PR_DuplicateEnvironment down in mozglue, but on android
+ * this winds up failing because the strdup/free calls wind up mismatching.
  */
 
 static char **
@@ -91,12 +98,15 @@ PR_DuplicateEnvironment(void)
     pthread_mutex_unlock(PR_GetEnvLock());
     return result;
 }
+#endif
 
 class EnvironmentEnvp
 {
 public:
+#if !defined(OS_OS2)
   EnvironmentEnvp()
     : mEnvp(PR_DuplicateEnvironment()) {}
+#endif
 
   EnvironmentEnvp(const environment_map &em)
   {
@@ -150,10 +160,16 @@ private:
 class Environment : public environment_map
 {
 public:
+#if !defined(OS_OS2)
   Environment()
   {
     EnvironmentEnvp envp;
     envp.ToMap(*this);
+  }
+#endif
+
+  Environment(const environment_map &m) : environment_map(m)
+  {
   }
 
   char * const *AsEnvp() {
@@ -174,9 +190,9 @@ private:
 
 bool LaunchApp(const std::vector<std::string>& argv,
                const file_handle_mapping_vector& fds_to_remap,
-               bool wait, ProcessHandle* process_handle) {
+               bool wait, ProcessHandle* process_handle, base::ProcessArchitecture arch) {
   return LaunchApp(argv, fds_to_remap, environment_map(),
-                   wait, process_handle);
+                   wait, process_handle, arch);
 }
 
 bool LaunchApp(const std::vector<std::string>& argv,
@@ -186,7 +202,7 @@ bool LaunchApp(const std::vector<std::string>& argv,
                ProcessArchitecture arch) {
   return LaunchApp(argv, fds_to_remap, env_vars_to_set,
                    PRIVILEGES_INHERIT,
-                   wait, process_handle);
+                   wait, process_handle, arch);
 }
 
 bool LaunchApp(const std::vector<std::string>& argv,
@@ -196,14 +212,22 @@ bool LaunchApp(const std::vector<std::string>& argv,
                bool wait, ProcessHandle* process_handle,
                ProcessArchitecture arch) {
   scoped_array<char*> argv_cstr(new char*[argv.size() + 1]);
+  for (size_t i = 0; i < argv.size(); i++)
+    argv_cstr[i] = const_cast<char*>(argv[i].c_str());
+  argv_cstr[argv.size()] = NULL;
+
   // Illegal to allocate memory after fork and before execvp
   InjectiveMultimap fd_shuffle1, fd_shuffle2;
   fd_shuffle1.reserve(fds_to_remap.size());
   fd_shuffle2.reserve(fds_to_remap.size());
 
 #ifdef HAVE_PR_DUPLICATE_ENVIRONMENT
+#ifdef OS_OS2
+  Environment env (env_vars_to_set);
+#else
   Environment env;
   env.Merge(env_vars_to_set);
+#endif
   char * const *envp = env.AsEnvp();
   if (!envp) {
     DLOG(ERROR) << "FAILED to duplicate environment for: " << argv_cstr[0];
@@ -211,6 +235,7 @@ bool LaunchApp(const std::vector<std::string>& argv,
   }
 #endif
 
+#if !defined(OS_OS2)
   pid_t pid = fork();
   if (pid < 0)
     return false;
@@ -227,10 +252,6 @@ bool LaunchApp(const std::vector<std::string>& argv,
 
     CloseSuperfluousFds(fd_shuffle2);
 
-    for (size_t i = 0; i < argv.size(); i++)
-      argv_cstr[i] = const_cast<char*>(argv[i].c_str());
-    argv_cstr[argv.size()] = NULL;
-
     SetCurrentProcessPrivileges(privs);
 
 #ifdef HAVE_PR_DUPLICATE_ENVIRONMENT
@@ -246,7 +267,61 @@ bool LaunchApp(const std::vector<std::string>& argv,
     // if we get here, we're in serious trouble and should complain loudly
     DLOG(ERROR) << "FAILED TO exec() CHILD PROCESS, path: " << argv_cstr[0];
     _exit(127);
-  } else {
+  } else
+#else // !defined(OS_OS2)
+
+  // Create requested file descriptor duplicates for the child
+  for (file_handle_mapping_vector::const_iterator
+      it = fds_to_remap.begin(); it != fds_to_remap.end(); ++it) {
+    fd_shuffle1.push_back(InjectionArc(it->first, it->second, false));
+    fd_shuffle2.push_back(InjectionArc(it->first, it->second, false));
+  }
+  if (!ShuffleFileDescriptors(&fd_shuffle1))
+    return false;
+
+  // Prohibit inheriting all handles but the created ones
+  LONG delta = 0;
+  ULONG max_fds = 0;
+  DosSetRelMaxFH(&delta, &max_fds);
+  for (int fd = 0; fd < (LONG)max_fds; ++fd) {
+    if (fd == STDIN_FILENO || fd == STDOUT_FILENO || fd == STDERR_FILENO)
+      continue;
+    InjectiveMultimap::const_iterator j;
+    for (j = fd_shuffle2.begin(); j != fd_shuffle2.end(); j++) {
+      if (fd == j->dest)
+        break;
+    }
+    if (j != fd_shuffle2.end())
+      continue;
+
+    fcntl(fd, F_SETFD, fcntl(fd, F_GETFD) | FD_CLOEXEC);
+  }
+
+  pid_t pid = spawnve(P_NOWAIT, argv_cstr[0], argv_cstr.get(), envp);
+
+  // Undo the above: reenable inheritance and close created duplicates
+  for (int fd = 0; fd < (LONG)max_fds; ++fd) {
+    if (fd == STDIN_FILENO || fd == STDOUT_FILENO || fd == STDERR_FILENO)
+      continue;
+    InjectiveMultimap::const_iterator j;
+    for (j = fd_shuffle2.begin(); j != fd_shuffle2.end(); j++) {
+      if (fd == j->dest)
+        break;
+    }
+    if (j != fd_shuffle2.end())
+      continue;
+
+    fcntl(fd, F_SETFD, fcntl(fd, F_GETFD) & ~FD_CLOEXEC);
+  }
+  for (InjectiveMultimap::const_iterator i = fd_shuffle2.begin(); i != fd_shuffle2.end(); i++) {
+    HANDLE_EINTR(close(i->dest));
+  }
+  
+  if (pid < 0) {
+    return false;
+  } else
+#endif // !defined(OS_OS2)
+  {
     gProcessLog.print("==> process %d launched child process %d\n",
                       GetCurrentProcId(), pid);
     if (wait)
@@ -266,6 +341,7 @@ bool LaunchApp(const CommandLine& cl,
   return LaunchApp(cl.argv(), no_files, wait, process_handle);
 }
 
+#if !defined(OS_OS2)
 void SetCurrentProcessPrivileges(ChildPrivileges privs) {
   if (privs == PRIVILEGES_INHERIT) {
     return;
@@ -473,5 +549,6 @@ bool ProcessMetrics::GetIOCounters(IoCounters* io_counters) const {
   }
   return true;
 }
+#endif // !defined(OS_OS2)
 
 }  // namespace base

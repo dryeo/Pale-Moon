@@ -14,6 +14,10 @@
 #include <sys/un.h>
 #include <sys/uio.h>
 
+#if defined(__EMX__)
+#include <unistd.h>
+#endif
+
 #include <string>
 #include <map>
 
@@ -428,6 +432,14 @@ bool Channel::ChannelImpl::ProcessIncomingMessages() {
       // recvmsg() returns 0 if the connection has closed or EAGAIN if no data
       // is waiting on the pipe.
       bytes_read = HANDLE_EINTR(recvmsg(pipe_, &msg, MSG_DONTWAIT));
+
+#ifdef OS_OS2
+      // OS/2 TCP/IP updates iov_base and iov_len if there is more data to read which seems to be
+      // non-POSIX compilant. This code doesn't expect such behavior and buffers partially received
+      // messages on its own. Reset these fields to initial values to emulate POSIX behavior.
+      iov.iov_base = input_buf_;
+      iov.iov_len = Channel::kReadBufferSize;
+#endif
 
       if (bytes_read < 0) {
         if (errno == EAGAIN) {

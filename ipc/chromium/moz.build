@@ -12,6 +12,7 @@ os_freebsd = 0
 os_netbsd = 0
 os_openbsd = 0
 os_bsd = 0
+os_os2 = 0
 os_linux = 0
 
 if CONFIG['OS_ARCH'] == 'WINNT':
@@ -32,6 +33,8 @@ else:
     elif CONFIG['OS_ARCH'] == 'OpenBSD':
         os_openbsd = 1
         os_bsd = 1
+    elif CONFIG['OS_ARCH'] == 'OS2':
+        os_os2 = 1
     else:
         os_linux = 1
 
@@ -135,11 +138,8 @@ if os_posix:
         'lock_impl_posix.cc',
         'message_pump_libevent.cc',
         'platform_file_posix.cc',
-        'platform_thread_posix.cc',
         'process_posix.cc',
         'process_util_posix.cc',
-        'rand_util_posix.cc',
-        'shared_memory_posix.cc',
         'string16.cc',
         'system_monitor_posix.cc',
         'sys_info_posix.cc',
@@ -151,6 +151,12 @@ if os_posix:
         'ipc_channel_posix.cc',
         'process_watcher_posix_sigchld.cc',
     ]
+    if not os_os2:
+        CPP_SOURCES += [
+            'platform_thread_posix.cc',
+            'rand_util_posix.cc',
+            'shared_memory_posix.cc',
+        ]
     if CONFIG['OS_TARGET'] == 'Android':
         CPP_SOURCES += [
             'message_pump_android.cc',
@@ -204,6 +210,22 @@ if os_bsd:
             'moc_message_pump_qt.cc',
             'message_pump_qt.cc',
         ]
+
+if os_os2:
+    CPP_SOURCES += [
+        'atomicops_internals_x86_gcc.cc',
+        'platform_thread_os2.cc',
+        'shared_memory_os2.cc',
+        'base_paths_os2.cc',
+        'transport_dib_os2.cc',
+        'process_util_linux.cc',
+        'process_util_os2.cc',
+        'time_posix.cc',
+        'sys_info_os2.cc',
+        'string_util_os2.cc',
+        'rand_util_os2.cc',
+        'message_pump_os2.cc',
+    ]
 
 if CONFIG['_MSC_VER']:
     CPP_SOURCES += [

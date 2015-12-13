@@ -7,6 +7,14 @@
 #ifndef __IPC_GLUE_IPCMESSAGEUTILS_H__
 #define __IPC_GLUE_IPCMESSAGEUTILS_H__
 
+#if defined(OS_OS2)
+// include everything from os2.h early to make sure we have all defs later
+// (once os.2 is included, you can't change the set of included defs)
+#define INCL_BASE
+#define INCL_PM
+#include <os2.h>
+#endif
+
 #include "base/process_util.h"
 #include "chrome/common/ipc_message_utils.h"
 
@@ -42,7 +50,7 @@
 #pragma warning( disable : 4800 )
 #endif
 
-#if !defined(OS_POSIX)
+#if !defined(OS_POSIX) || !defined(OS_OS2)
 // This condition must be kept in sync with the one in
 // ipc_message_utils.h, but this dummy definition of
 // base::FileDescriptor acts as a static assert that we only get one
@@ -203,7 +211,7 @@ struct ParamTraits<uint8_t>
   }
 };
 
-#if !defined(OS_POSIX)
+#if !defined(OS_POSIX) || !defined(OS_OS2)
 // See above re: keeping definitions in sync
 template<>
 struct ParamTraits<base::FileDescriptor>

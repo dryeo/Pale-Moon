@@ -26,6 +26,11 @@
 #elif defined(OS_POSIX)
 #include "base/message_pump_libevent.h"
 #endif
+#if defined(OS_OS2)
+// We need this to declare base::MessagePumpOS2::Dispatcher, which we should
+// really just eliminate.
+#include "base/message_pump_os2.h"
+#endif
 
 namespace mozilla {
 namespace ipc {
@@ -259,7 +264,7 @@ public:
     exception_restoration_ = restore;
   }
 
-#if defined(OS_WIN)
+#if defined(OS_WIN) || defined(OS_OS2)
   void set_os_modal_loop(bool os_modal_loop) {
     os_modal_loop_ = os_modal_loop;
   }
@@ -267,7 +272,7 @@ public:
   bool & os_modal_loop() {
     return os_modal_loop_;
   }
-#endif  // OS_WIN
+#endif  // OS_WIN || OS_OS2
 
   //----------------------------------------------------------------------------
  protected:
@@ -281,6 +286,9 @@ public:
 
 #if defined(OS_WIN)
     base::MessagePumpWin::Dispatcher* dispatcher;
+#endif
+#if defined(OS_OS2)
+    base::MessagePumpOS2::Dispatcher* dispatcher;
 #endif
   };
 
@@ -318,6 +326,11 @@ public:
 #elif defined(OS_POSIX)
   base::MessagePumpLibevent* pump_libevent() {
     return static_cast<base::MessagePumpLibevent*>(pump_.get());
+  }
+#endif
+#if defined(OS_OS2)
+  base::MessagePumpOS2* pump_os2() {
+    return static_cast<base::MessagePumpOS2*>(pump_.get());
   }
 #endif
 
@@ -414,7 +427,7 @@ public:
   RunState* state_;
   int run_depth_base_;
 
-#if defined(OS_WIN)
+#if defined(OS_WIN) || defined(OS_OS2)
   // Should be set to true before calling Windows APIs like TrackPopupMenu, etc
   // which enter a modal message loop.
   bool os_modal_loop_;
@@ -468,6 +481,25 @@ class MessageLoopForUI : public MessageLoop {
     return static_cast<base::MessagePumpForUI*>(pump_.get());
   }
 #endif  // defined(OS_WIN)
+
+#if defined(OS_OS2)
+  typedef base::MessagePumpOS2::Dispatcher Dispatcher;
+  typedef base::MessagePumpOS2::Observer Observer;
+
+  // Please see MessagePumpWin for definitions of these methods.
+  void Run(Dispatcher* dispatcher);
+  void AddObserver(Observer* observer);
+  void RemoveObserver(Observer* observer);
+  void WillProcessMessage(const QMSG& message);
+  void DidProcessMessage(const QMSG& message);
+  void PumpOutPendingPaintMessages();
+
+ protected:
+  // TODO(rvargas): Make this platform independent.
+  base::MessagePumpForUI* pump_ui() {
+    return static_cast<base::MessagePumpForUI*>(pump_.get());
+  }
+#endif  // defined(OS_OS2)
 };
 
 // Do not add any member variables to MessageLoopForUI!  This is important b/c
