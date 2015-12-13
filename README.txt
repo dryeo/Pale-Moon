@@ -1,4 +1,4 @@
-This is the source code for the Pale Moon web browser, an alternative
+This is the source code for the OS/2 fork of the Pale Moon web browser, an alternative
 browser based on Firefox/Mozilla community code. The source tree is
 mostly laid out like other Mozilla-based products.
 
