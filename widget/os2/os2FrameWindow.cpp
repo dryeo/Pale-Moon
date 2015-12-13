@@ -16,6 +16,7 @@
 #include "os2FrameWindow.h"
 #include "nsIRollupListener.h"
 #include "nsIScreenManager.h"
+#include "nsIWidgetListener.h"
 #include "nsOS2Uni.h"
 
 //-----------------------------------------------------------------------------
@@ -25,6 +26,7 @@ extern uint32_t            gOS2Flags;
 
 #ifdef DEBUG_FOCUS
   extern int currentWindowIdentifier;
+  int           mWindowIdentifier;  // a serial number for each new window
 #endif
 
 //-----------------------------------------------------------------------------
@@ -125,8 +127,8 @@ HWND os2FrameWindow::CreateFrameWindow(nsWindow* aParent,
   // the width includes the width of the frame controls (minmax, etc.).
   SWP swp;
   WinQueryWindowPos(hClient, &swp);
-  mOwner->SetBounds(nsIntRect(swp.x, mFrameBounds.height - swp.y - swp.cy,
-                              swp.cx, swp.cy));
+  mOwner->mBounds = nsIntRect(swp.x, mFrameBounds.height - swp.y - swp.cy,
+                              swp.cx, swp.cy);
 
   // Subclass the frame.
   mPrevFrameProc = WinSubclassWindow(mFrameWnd, fnwpFrame);
@@ -316,7 +318,7 @@ void os2FrameWindow::ActivateTopLevelWidget()
     if (mOwner->SizeMode() != nsSizeMode_Minimized) {
       mNeedActivation = false;
       DEBUGFOCUS(NS_ACTIVATE);
-      mOwner->DispatchActivationEvent(NS_ACTIVATE);
+      mOwner->DispatchActivationEvent(true);
     }
   }
   return;
@@ -591,8 +593,8 @@ MRESULT EXPENTRY fnwpFrame(HWND hwnd, ULONG msg, MPARAM mp1, MPARAM mp2)
         msg == WM_BUTTON1DOWN || msg == WM_BUTTON2DOWN ||
         msg == WM_BUTTON3DOWN) {
       // Rollup if the event is outside the popup
-      if (!nsWindow::EventIsInsideWindow((nsWindow*)rollupWidget)) {
-        rollupListener->Rollup(UINT32_MAX);
+      if (!nsWindow::EventIsInsideWindow((nsWindow*)rollupWidget.get())) {
+        rollupListener->Rollup(UINT32_MAX, nullptr);
       }
     }
   }
@@ -633,16 +635,17 @@ MRESULT os2FrameWindow::ProcessFrameMessage(ULONG msg, MPARAM mp1, MPARAM mp2)
       }
 
       if (pSwp->fl & (SWP_MAXIMIZE | SWP_MINIMIZE | SWP_RESTORE)) {
-        nsSizeModeEvent event(true, NS_SIZEMODE, mOwner);
-        if (pSwp->fl & SWP_MAXIMIZE) {
-          event.mSizeMode = nsSizeMode_Maximized;
-        } else if (pSwp->fl & SWP_MINIMIZE) {
-          event.mSizeMode = nsSizeMode_Minimized;
-        } else {
-          event.mSizeMode = nsSizeMode_Normal;
+        if (mOwner->mWidgetListener) {
+          nsSizeMode mode;
+          if (pSwp->fl & SWP_MAXIMIZE) {
+            mode = nsSizeMode_Maximized;
+          } else if (pSwp->fl & SWP_MINIMIZE) {
+            mode = nsSizeMode_Minimized;
+          } else {
+            mode = nsSizeMode_Normal;
+          }
+          mOwner->mWidgetListener->SizeModeChanged(mode);
         }
-        mOwner->InitEvent(event);
-        mOwner->DispatchWindowEvent(&event);
       }
       break;
     }
@@ -708,7 +711,7 @@ MRESULT os2FrameWindow::ProcessFrameMessage(ULONG msg, MPARAM mp1, MPARAM mp2)
       } else {
         mNeedActivation = false;
         DEBUGFOCUS(NS_DEACTIVATE);
-        mOwner->DispatchActivationEvent(NS_DEACTIVATE);
+        mOwner->DispatchActivationEvent(false);
         // Prevent the frame from automatically focusing any window
         // when it's reactivated.  Let moz set the focus to avoid
         // having non-widget children of plugins focused in error.

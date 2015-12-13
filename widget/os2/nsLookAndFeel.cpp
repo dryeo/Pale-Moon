@@ -15,6 +15,7 @@
 #include "nsFont.h"
 #include "nsSize.h"
 #include "nsStyleConsts.h"
+#include "gfxFont.h"
 
 static bool bIsDBCS;
 static bool bIsDBCSSet = false;
@@ -427,8 +428,9 @@ QueryFontFromINI(char* fontType, char* fontName, ULONG ulLength)
  * to determine the font style from it.
  */
 bool
-nsLookAndFeel::GetFont(FontID aID, nsString& aFontName,
-                       gfxFontStyle& aFontStyle)
+nsLookAndFeel::GetFontImpl(FontID aID, nsString& aFontName,
+                           gfxFontStyle& aFontStyle,
+                           float aDevPixPerCSSPixel)
 {
   char szFontNameSize[MAXNAMEL];
 
@@ -489,6 +491,9 @@ nsLookAndFeel::GetFont(FontID aID, nsString& aFontName,
 
   // now scale to make pixels from points (1 pt = 1/72in)
   aFontStyle.size *= vertScreenRes / 72.0;
+
+  // now convert the logical font size into device pixels for layout
+  aFontStyle.size *= aDevPixPerCSSPixel;
 
   NS_ConvertUTF8toUTF16 fontFace(szFacename);
   int pos = 0;

@@ -39,10 +39,14 @@
 #include "nsHashKeys.h"
 #include "nsIRollupListener.h"
 #include "nsIScreenManager.h"
+#include "nsIXULRuntime.h"
+#include "nsIContent.h"
+#include "nsIWidgetListener.h"
 #include "nsOS2Uni.h"
 #include "nsTHashtable.h"
 #include "nsGkAtoms.h"
 #include "wdgtos2rc.h"
+#include <ddi.h>
 #include "nsIDOMWheelEvent.h"
 #include "mozilla/Preferences.h"
 #include <os2im.h>
@@ -130,6 +134,11 @@ using namespace mozilla::widget;
 // IME caret not exist
 #define NO_IME_CARET    (static_cast<ULONG>(-1))
 
+// from gradd.h (slightly modified) - used by InitDIVEStatus()
+#define VMI_CMD_SETPTR      11
+typedef ULONG (_System FNVMIENTRY)(ULONG, ULONG, PVOID, PVOID);
+typedef FNVMIENTRY* PFNVMIENTRY;
+
 //-----------------------------------------------------------------------------
 // Debug
 #ifdef DEBUG_FOCUS
@@ -155,9 +164,15 @@ static POINTS       sLastButton1Down = {0,0};
 // set when any nsWindow is being dragged over
 static uint32_t     sDragStatus = 0;
 
+// DIVE status - can it be used & is it enabled
+static bool       sUseDive = false;
+static bool       sDiveEnabled = false;
+static bool       sDiveHidePtr = true;
+
 #ifdef DEBUG_FOCUS
   int currentWindowIdentifier = 0;
 #endif
+
 // IME stuffs
 static HMODULE sIm32Mod = NULLHANDLE;
 static APIRET (APIENTRY *spfnImGetInstance)(HWND, PHIMI);
@@ -169,6 +184,9 @@ static APIRET (APIENTRY *spfnImRequestIME)(HIMI, ULONG, ULONG, ULONG);
 
 //-----------------------------------------------------------------------------
 static uint32_t     WMChar2KeyCode(MPARAM mp1, MPARAM mp2);
+static void         InitDIVEStatus();
+static void         SetDIVEStatus();
+static void         InitIME();
 
 //=============================================================================
 //  nsWindow Create / Destroy
@@ -192,9 +210,13 @@ nsWindow::nsWindow() : nsBaseWidget()
   mCssCursorHPtr      = 0;
   mThebesSurface      = 0;
   mIsComposing        = false;
+
   if (!gOS2Flags) {
     InitGlobals();
   }
+
+  // Update DIVE status each time a widget is created.
+  SetDIVEStatus();
 }
 
 //-----------------------------------------------------------------------------
@@ -231,12 +253,15 @@ nsWindow::~nsWindow()
     WinDestroyWindow(mClipWnd);
     mClipWnd = 0;
   }
- 
+
   // If it exists, destroy our os2FrameWindow helper object.
   if (mFrame) {
     delete mFrame;
     mFrame = 0;
   }
+
+  // Update DIVE status each time a widget is destroyed.
+  SetDIVEStatus();
 }
 
 //-----------------------------------------------------------------------------
@@ -317,7 +342,182 @@ void InitIME()
       sIm32Mod = NULLHANDLE;
     }
   }
+
+  InitDIVEStatus();
 }
+
+//-----------------------------------------------------------------------------
+// Determine whether to use DIVE
+
+static
+void InitDIVEStatus()
+{
+  // Don't use DIVE if we're in safe-mode.
+  bool disable = false;
+  nsCOMPtr<nsIXULRuntime> xr = do_GetService("@mozilla.org/xre/runtime;1");
+  if (xr) {
+    xr->GetInSafeMode(&disable);
+    if (disable) {
+      printf("DIVE is disabled - in safe-mode\n");
+      return;
+    }
+  }
+
+  // If MOZ_ACCELERATED is set to any value except '1' or '2', force DIVE off.
+  const char *env = getenv("MOZ_ACCELERATED");
+  if (env) {
+    if (*env == '1') {
+      sUseDive = TRUE;
+    }
+    else if (*env == '2') {
+      sUseDive = TRUE;
+      sDiveHidePtr = FALSE;
+    }
+
+    if (!sUseDive)
+      printf("DIVE is disabled - MOZ_ACCELERATED=%s\n", env);
+    else
+      printf("DIVE forced on by MOZ_ACCELERATED=%s - pointer will%s be hidden\n",
+             env, (sDiveHidePtr ? "" : " not"));
+
+    return;
+  }
+
+  // Don't use DIVE if the Panorama video driver is in use
+  // unless its shadow buffer is turned off.
+  HMODULE hmod;
+  if (!DosQueryModuleHandle("PANOGREX", &hmod)) {
+    char      str[8];
+    if (PrfQueryProfileString(HINI_USERPROFILE, "PANORAMA", "VBEShadowBuffer",
+                              0, str, sizeof(str)) && !strcmp(str, "0")) {
+      sUseDive = TRUE;
+      printf("Video driver is Panorama - shadow-buffer is disabled\n");
+    }
+    else
+      printf("DIVE is disabled - Panorama's shadow-buffer is enabled\n");
+
+    return;
+  }
+
+  sUseDive = TRUE;
+
+  // If the driver isn't SNAP, use DIVE but hide the pointer
+  // when writing to the framebuffer.
+  if (DosQueryModuleHandle("SDDGREXT", &hmod)) {
+    printf("Video driver is neither SNAP nor Panorama - mouse ptr will be hidden\n");
+    return;
+  }
+
+  // SNAP usually - but not always - uses a hardware mouse pointer that doesn't
+  // have to be hidden when writing to the framebuffer.  Find out by setting a
+  // dummy mouse pointer & see if returns the POINTER_SOFTWARE flag.
+
+  PFNVMIENTRY pEntry;
+  BYTE        buffer[16];
+
+  // First, do a sanity check to ensure vman.dll is loaded.  The hmod returned
+  // isn't usable, so reload it, then get the address of VMIENTRY().
+  ULONG rc = DosQueryModuleHandle("VMAN", &hmod);
+  if (!rc)
+    rc = DosLoadModule(buffer, sizeof(buffer), "VMAN", &hmod);
+  if (!rc) {
+    rc = DosQueryProcAddr(hmod, 1, 0, (PFN*)&pEntry);
+    if (rc)
+      DosFreeModule(hmod);
+  }
+  if (rc) {
+    printf("Video driver is SNAP, unable to test VMAN - mouse ptr will be hidden\n");
+    return;
+  }
+
+  memset(buffer, 0, sizeof(buffer));
+
+  // Describe a very small pointer (4x4)
+  HWSETPTRIN  hwi;
+  hwi.ulLength = sizeof(hwi);
+  hwi.pbANDMask = &buffer[0];
+  hwi.pbXORMask = &buffer[sizeof(buffer)/2];
+  hwi.pbBits = 0;
+  hwi.ulBpp = 1;
+  hwi.ulWidth = 4;
+  hwi.ulHeight = 4;
+  hwi.ptlHotspot.x = 0;
+  hwi.ptlHotspot.y = 0;
+
+  // The result will be returned here.
+  HWSETPTROUT hwo;
+  hwo.ulLength = sizeof(hwo);
+  hwo.ulStatus = 0;
+
+  // Get the current pointer, then hide it for cosmetic reasons.
+  HPOINTER  hptr = WinQueryPointer(HWND_DESKTOP);
+  WinShowPointer(HWND_DESKTOP, FALSE);
+
+  // Set the dummy pointer.
+  rc = pEntry(0, VMI_CMD_SETPTR, &hwi, &hwo);
+
+  // Restore the original pointer, show it, then unload vman.dll.
+  WinSetPointer(HWND_DESKTOP, hptr);
+  WinShowPointer(HWND_DESKTOP, TRUE);
+  DosFreeModule(hmod);
+
+  printf("VMI_CMD_SETPTR - rc= %lx  ulStatus= %lx\n", rc, hwo.ulStatus);
+
+  // If the setptr call succeeded & SNAP didn't set the sw pointer flag,
+  // then we can skip hiding the pointer when writing to the framebuffer.
+  if (!rc && !(hwo.ulStatus & POINTER_SOFTWARE))
+    sDiveHidePtr = FALSE;
+
+  printf("Video driver is SNAP - mouse ptr will%s be hidden\n",
+         (sDiveHidePtr ? "" : " not"));
+}
+
+//-----------------------------------------------------------------------------
+// Determine whether to enable DIVE
+
+static
+void SetDIVEStatus()
+{
+  // If DIVE shouldn't be enabled, disable it if needed then exit.
+  if (!sUseDive) {
+    if (sDiveEnabled) {
+      gfxOS2Surface::EnableDIVE(false, false);
+      printf("DIVE was enabled but shouldn't have been - disabling it now\n");
+    }
+    return;
+  }
+
+  // See if the user has set the pref to disable acceleration.
+  bool disable = false;
+  nsCOMPtr<nsIPrefBranch2> prefs = do_GetService(NS_PREFSERVICE_CONTRACTID);
+  if (prefs) {
+    prefs->GetBoolPref("layers.acceleration.disabled", &disable);
+  }
+
+  // If the current state doesn't match the disable flag, we're OK.
+  if (sDiveEnabled != disable) {
+    return;
+  }
+
+  // The current state is enabled but the flag is set to disable.
+  if (disable) {
+    gfxOS2Surface::EnableDIVE(false, false);
+    sDiveEnabled = false;
+    return;
+  }
+
+  // The current state is disabled but DIVE should be enabled.  If this
+  // fails (e.g. because we're in an 8- or 16-bit color mode), permanently
+  // disable DIVE.
+  sUseDive = gfxOS2Surface::EnableDIVE(true, sDiveHidePtr);
+  if (sUseDive) {
+    sDiveEnabled = true;
+    printf("Changing DIVE from enabled to disabled - 'layers.acceleration.disabled' is TRUE\n");
+  }
+  else
+    printf("Unable to enable DIVE - it will not be used for this session\n");
+}
+
 //-----------------------------------------------------------------------------
 // Release Module-level variables.
 
@@ -335,7 +535,6 @@ void nsWindow::ReleaseGlobals()
 NS_METHOD nsWindow::Create(nsIWidget* aParent,
                            nsNativeWidget aNativeParent,
                            const nsIntRect& aRect,
-                           EVENT_CALLBACK aHandleEventFunction,
                            nsDeviceContext* aContext,
                            nsWidgetInitData* aInitData)
 {
@@ -359,7 +558,7 @@ NS_METHOD nsWindow::Create(nsIWidget* aParent,
     }
   }
 
-  BaseCreate(aParent, aRect, aHandleEventFunction, aContext, aInitData);
+  BaseCreate(aParent, aRect, aContext, aInitData);
 
 #ifdef DEBUG_FOCUS
   mWindowIdentifier = currentWindowIdentifier;
@@ -398,11 +597,6 @@ NS_METHOD nsWindow::Create(nsIWidget* aParent,
 
   // Store a pointer to this object in the window's extra bytes.
   SetNSWindowPtr(mWnd, this);
-
-  // Finalize the widget creation process.
-  nsGUIEvent event(true, NS_CREATE, this);
-  InitEvent(event);
-  DispatchWindowEvent(&event);
 
   mWindowState = nsWindowState_eLive;
   return NS_OK;
@@ -462,12 +656,8 @@ nsresult nsWindow::CreateWindow(nsWindow* aParent,
                   aRect.x, parRect.height - aRect.y - aRect.height,
                   aRect.width, aRect.height, SWP_SIZE | SWP_MOVE);
 
-  // Store the widget's parent and add it to the parent's list of children.
-  // Don't ADDREF mParent because AddChild() ADDREFs us.
+  // Store the widget's parent
   mParent = aParent;
-  if (mParent) {
-    mParent->AddChild(this);
-  }
 
   DEBUGFOCUS(Create nsWindow);
   return NS_OK;
@@ -492,8 +682,8 @@ NS_METHOD nsWindow::Destroy()
     rollupWidget = rollupListener->GetRollupWidget();
   }
   if (this == rollupWidget) {
-    rollupListener->Rollup(UINT32_MAX);
-    CaptureRollupEvents(nullptr, false, true);
+    rollupListener->Rollup(UINT32_MAX, nullptr);
+    CaptureRollupEvents(nullptr, false);
   }
 
   HWND hMain = GetMainWindow();
@@ -514,7 +704,7 @@ NS_METHOD nsWindow::Destroy()
 // This can't be inlined in nsWindow.h because it doesn't know about
 // GetFrameWnd().
 
-inline HWND nsWindow::GetMainWindow()
+inline HWND nsWindow::GetMainWindow() const
 {
   return mFrame ? mFrame->GetFrameWnd() : mWnd;
 }
@@ -673,7 +863,7 @@ float nsWindow::GetDPI()
       sDPI = 96;
     }
   }
-  return sDPI;  
+  return sDPI;
 }
 
 //-----------------------------------------------------------------------------
@@ -941,7 +1131,7 @@ void nsWindow::ActivatePlugin(HWND aWnd)
   // Fire a plugin activation event on the plugin widget.
   inPluginActivate = TRUE;
   DEBUGFOCUS(NS_PLUGIN_ACTIVATE);
-  DispatchActivationEvent(NS_PLUGIN_ACTIVATE);
+  DispatchPluginActivationEvent();
 
   // Activating the plugin moves the focus off the child that had it,
   // so try to restore it.  If the WM_FOCUSCHANGED msg was synthesized
@@ -1574,7 +1764,7 @@ bool nsWindow::RollupOnButtonDown(ULONG aMsg)
   }
 
   // Exit if the event is inside the most recent popup.
-  if (EventIsInsideWindow((nsWindow*)rollupWidget)) {
+  if (EventIsInsideWindow((nsWindow*)rollupWidget.get())) {
     return false;
   }
 
@@ -1600,7 +1790,7 @@ bool nsWindow::RollupOnButtonDown(ULONG aMsg)
   // We only need to deal with the last rollup for left mouse down events.
   NS_ASSERTION(!mLastRollup, "mLastRollup is null");
   bool consumeRollupEvent =
-    rollupListener->Rollup(popupsToRollup, aMsg == WM_LBUTTONDOWN ? &mLastRollup : nullptr);
+    rollupListener->Rollup(popupsToRollup, aMsg == WM_BUTTON1DOWN ? &mLastRollup : nullptr);
   NS_IF_ADDREF(mLastRollup);
 
   // If true, the buttondown event won't be passed on to the wndproc.
@@ -1617,7 +1807,7 @@ void nsWindow::RollupOnFocusLost(HWND aFocus)
   if (rollupListener) {
     rollupWidget = rollupListener->GetRollupWidget();
   }
-  HWND hRollup = rollupWidget ? ((nsWindow*)rollupWidget)->mWnd : NULL;
+  HWND hRollup = rollupWidget ? ((nsWindow*)rollupWidget.get())->mWnd : NULL;
 
   // Exit if focus was lost to the most recent popup.
   if (hRollup == aFocus) {
@@ -1635,7 +1825,7 @@ void nsWindow::RollupOnFocusLost(HWND aFocus)
     }
 
     // Rollup all popups.
-    rollupListener->Rollup(UINT32_MAX);
+    rollupListener->Rollup(UINT32_MAX, nullptr);
   }
 }
 
@@ -1666,21 +1856,27 @@ MRESULT EXPENTRY fnwpNSWindow(HWND hwnd, ULONG msg, MPARAM mp1, MPARAM mp2)
   }
 
   // Pre-process msgs that may cause a rollup.
-  }
-  switch (msg) {
-    case WM_BUTTON1DOWN:
-    case WM_BUTTON2DOWN:
-    case WM_BUTTON3DOWN:
-      if (nsWindow::RollupOnButtonDown(msg)) {
-        return (MRESULT)true;
-      }
-      break;
+  nsIRollupListener* rollupListener = nsBaseWidget::GetActiveRollupListener();
+  nsCOMPtr<nsIWidget> rollupWidget;
+  if (rollupListener) {
+    rollupWidget = rollupListener->GetRollupWidget();
+    if (rollupWidget) {
+      switch (msg) {
+        case WM_BUTTON1DOWN:
+        case WM_BUTTON2DOWN:
+        case WM_BUTTON3DOWN:
+          if (nsWindow::RollupOnButtonDown(msg)) {
+            return (MRESULT)true;
+          }
+          break;
 
-    case WM_SETFOCUS:
-      if (!mp2) {
-        nsWindow::RollupOnFocusLost((HWND)mp1);
+        case WM_SETFOCUS:
+          if (!mp2) {
+            nsWindow::RollupOnFocusLost((HWND)mp1);
+          }
+          break;
       }
-      break;
+    }
   }
 
   return wnd->ProcessMessage(msg, mp1, mp2);
@@ -1700,10 +1896,8 @@ MRESULT nsWindow::ProcessMessage(ULONG msg, MPARAM mp1, MPARAM mp2)
     // windows can be closed from the Window List
     case WM_CLOSE:
     case WM_QUIT: {
-      mWindowState |= nsWindowState_eClosing;
-      nsGUIEvent event(true, NS_XUL_CLOSE, this);
-      InitEvent(event);
-      DispatchWindowEvent(&event);
+      if (mWidgetListener)
+        mWidgetListener->RequestWindowClose(this);
       // abort window closure
       isDone = true;
       break;
@@ -1909,6 +2103,12 @@ void nsWindow::OnDestroy()
 {
   mOnDestroyCalled = true;
 
+  if (mInputContext.mNativeIMEContext && mInputContext.mNativeIMEContext != this) {
+    HIMI himi = reinterpret_cast<HIMI>(mInputContext.mNativeIMEContext);
+    spfnImReleaseInstance(mWnd, himi);
+    mInputContext.mNativeIMEContext = nullptr;
+  }
+
   SetNSWindowPtr(mWnd, 0);
   mWnd = 0;
 
@@ -1974,10 +2174,10 @@ bool nsWindow::OnReposition(PSWP pSwp)
 
 bool nsWindow::OnPaint()
 {
+  bool   result = false;
   HPS    hPS;
   HPS    hpsDrag;
-  HRGN   hrgn;
-  nsEventStatus eventStatus = nsEventStatus_eIgnore;
+  HRGN   hrgn = 0;
 
 #ifdef DEBUG_PAINT
   HRGN debugPaintFlashRegion = 0;
@@ -2028,49 +2228,57 @@ do {
 
   // Even if there is no callback to update the content (unlikely)
   // we still want to update the screen with whatever's available.
-  if (!mEventCallback) {
-    mThebesSurface->Refresh(&rcl, hPS);
+  if (!mWidgetListener) {
+    mThebesSurface->Refresh(&rcl, 1, hPS);
     break;
   }
 
-  // Create an event & a Thebes context.
-  nsPaintEvent event(true, NS_PAINT, this);
-  InitEvent(event);
+  // Create a Thebes context.
+  nsIntRegion region;
   nsRefPtr<gfxContext> thebesContext = new gfxContext(mThebesSurface);
 
-  // Intersect the update region with the paint rectangle to clip areas
-  // that aren't visible (e.g. offscreen or covered by another window).
-  HRGN hrgnPaint;
-  hrgnPaint = GpiCreateRegion(hPS, 1, &rcl);
-  if (hrgnPaint) {
-    GpiCombineRegion(hPS, hrgn, hrgn, hrgnPaint, CRGN_AND);
-    GpiDestroyRegion(hPS, hrgnPaint);
-  }
+  // Decide whether to display the entire update rectangle or
+  // just the individual rects that comprise the update region.
+  // Display the entire area if any of these are true:
+  // - the region has a single rect (the most common situation);
+  // - the region has more than 10 rects (very uncommon);
+  // - the region rects cover 80% or more of the update rect (common).
 
-  // See how many rects comprise the update region.  If there are 8
-  // or fewer, update them individually.  If there are more or the call
-  // failed, update the bounding rectangle returned by WinBeginPaint().
-  #define MAX_CLIPRECTS 8
-  RGNRECT rgnrect = { 1, MAX_CLIPRECTS, 0, RECTDIR_LFRT_TOPBOT };
-  RECTL   arect[MAX_CLIPRECTS];
-  RECTL*  pr = arect;
+  #define MAX_CLIPRECTS 10
+  bool    useRegion = false;
+  uint32_t  ndx;
+  RECTL*    pr;
+  RECTL     arect[MAX_CLIPRECTS];
+  RGNRECT   rgnrect = { 1, 1024, 0, RECTDIR_LFRT_TOPBOT };
 
-  if (!GpiQueryRegionRects(hPS, hrgn, 0, &rgnrect, 0) ||
-      rgnrect.crcReturned > MAX_CLIPRECTS) {
-    rgnrect.crcReturned = 1;
-    arect[0] = rcl;
-  } else {
+  if (GpiQueryRegionRects(hPS, hrgn, 0, &rgnrect, 0) &&
+      rgnrect.crcReturned > 1 && rgnrect.crcReturned <= MAX_CLIPRECTS) {
+    rgnrect.crc = MAX_CLIPRECTS;
     GpiQueryRegionRects(hPS, hrgn, 0, &rgnrect, arect);
+
+    useRegion = true;
+    int32_t rgnArea = 0;
+    int32_t rclArea = (rcl.xRight - rcl.xLeft) * (rcl.yTop - rcl.yBottom) * 4 / 5;
+    for (ndx = rgnrect.crcReturned, pr = arect; ndx; ndx--, pr++) {
+      rgnArea += (pr->xRight - pr->xLeft) * (pr->yTop - pr->yBottom);
+      if (rgnArea >= rclArea) {
+        useRegion = false;
+        break;
+      }
+    }
   }
 
-  // Create clipping regions for the event & the Thebes context.
+  if (!useRegion) {
+    arect[0] = rcl;
+    rgnrect.crcReturned = 1;
+  }
+
+  // Establish a clipping region for Thebes.
   thebesContext->NewPath();
-  for (uint32_t i = 0; i < rgnrect.crcReturned; i++, pr++) {
-    event.region.Or(event.region, 
-                    nsIntRect(pr->xLeft,
-                              mBounds.height - pr->yTop,
-                              pr->xRight - pr->xLeft,
-                              pr->yTop - pr->yBottom));
+  for (ndx = rgnrect.crcReturned, pr = arect; ndx; ndx--, pr++) {
+    region.Or(region,
+              nsIntRect(pr->xLeft, mBounds.height - pr->yTop,
+                        pr->xRight - pr->xLeft, pr->yTop - pr->yBottom));
 
     thebesContext->Rectangle(gfxRect(pr->xLeft,
                                      mBounds.height - pr->yTop,
@@ -2079,28 +2287,21 @@ do {
   }
   thebesContext->Clip();
 
+  if (!region.IsEmpty()) {
 #ifdef DEBUG_PAINT
-  debug_DumpPaintEvent(stdout, this, &event, nsAutoCString("noname"),
-                       (int32_t)mWnd);
+    debug_DumpPaintEvent(stdout, this, region, nsAutoCString("noname"),
+                         (int32_t)mWnd);
 #endif
 
-  // Init the Layers manager then dispatch the event.
-  // If it returns false there's nothing to paint, so exit.
-  AutoLayerManagerSetup
-      setupLayerManager(this, thebesContext, BasicLayerManager::BUFFER_NONE);
-  if (!DispatchWindowEvent(&event, eventStatus)) {
-    break;
-  }
+    // Init the Layers manager then dispatch the event.
+    // If it returns false there's nothing to paint, so exit.
+    AutoLayerManagerSetup
+        setupLayerManager(this, thebesContext, mozilla::layers::BUFFER_NONE);
+    result = mWidgetListener->PaintWindow(this, region);
 
-  // Paint the surface, then use Refresh() to blit each rect to the screen.
-  thebesContext->PopGroupToSource();
-  thebesContext->SetOperator(gfxContext::OPERATOR_SOURCE);
-  thebesContext->Paint();
-  pr = arect;
-  for (uint32_t i = 0; i < rgnrect.crcReturned; i++, pr++) {
-    mThebesSurface->Refresh(pr, hPS);
+    // Have Thebes display the rectangle(s).
+    mThebesSurface->Refresh(arect, rgnrect.crcReturned, hPS);
   }
-
 } while (0);
 
   // Cleanup.
@@ -2119,7 +2320,7 @@ do {
     // Only flash paint events which have not ignored the paint message.
     // Those that ignore the paint message aren't painting anything so there
     // is only the overhead of the dispatching the paint event.
-    if (eventStatus != nsEventStatus_eIgnore) {
+    if (result) {
       LONG CurMix = GpiQueryMix(debugPaintFlashPS);
       GpiSetMix(debugPaintFlashPS, FM_INVERT);
 
@@ -2135,7 +2336,7 @@ do {
   }
 #endif
 
-  return true;
+  return result;
 }
 
 //-----------------------------------------------------------------------------
@@ -2713,7 +2914,7 @@ NS_IMETHODIMP_(InputContext) nsWindow::GetInputContext()
 {
   HIMI himi;
   if (sIm32Mod && spfnImGetInstance(mWnd, &himi)) {
-    mInputContext.mNativeIMEContext = static_cast<void*>(himi);
+    mInputContext.mNativeIMEContext = reinterpret_cast<void*>(himi);
   }
   if (!mInputContext.mNativeIMEContext) {
     mInputContext.mNativeIMEContext = this;
@@ -3028,13 +3229,13 @@ NS_IMETHODIMP nsWindow::DispatchEvent(nsGUIEvent* event, nsEventStatus& aStatus)
 {
   aStatus = nsEventStatus_eIgnore;
 
-  if (!mEventCallback) {
+  if (!mWidgetListener) {
     return NS_OK;
   }
 
   // if state is eDoingDelete, don't send out anything
   if (mWindowState & nsWindowState_eLive) {
-    aStatus = (*mEventCallback)(event);
+    aStatus = mWidgetListener->HandleEvent(event, mUseAttachedEvents);
   }
   return NS_OK;
 }
@@ -3108,25 +3309,14 @@ bool nsWindow::DispatchDragDropEvent(uint32_t aMsg)
 bool nsWindow::DispatchMoveEvent(int32_t aX, int32_t aY)
 {
   // Params here are in XP-space for the desktop
-  nsGUIEvent event(true, NS_MOVE, this);
-  nsIntPoint point(aX, aY);
-  InitEvent(event, &point);
-  return DispatchWindowEvent(&event);
+  return mWidgetListener ? mWidgetListener->WindowMoved(this, aX, aY) : false;
 }
 
 //-----------------------------------------------------------------------------
 
 bool nsWindow::DispatchResizeEvent(int32_t aX, int32_t aY)
 {
-  nsSizeEvent event(true, NS_SIZE, this);
-  nsIntRect   rect(0, 0, aX, aY);
-
-  InitEvent(event);
-  event.windowSize = &rect;             // this is the *client* rectangle
-  event.mWinWidth = mBounds.width;
-  event.mWinHeight = mBounds.height;
-
-  return DispatchWindowEvent(&event);
+  return mWidgetListener ? mWidgetListener->WindowResized(this, aX, aY) : false;
 }
 
 //-----------------------------------------------------------------------------
@@ -3277,11 +3467,25 @@ bool nsWindow::DispatchMouseEvent(uint32_t aEventType, MPARAM mp1, MPARAM mp2,
 }
 
 //-----------------------------------------------------------------------------
-// Signal plugin & top-level window activation.
+// Signal top-level window activation.
 
-bool nsWindow::DispatchActivationEvent(uint32_t aEventType)
+void nsWindow::DispatchActivationEvent(bool aIsActivate)
 {
-  nsGUIEvent event(true, aEventType, this);
+  if (!mWidgetListener)
+    return;
+
+  if (aIsActivate)
+    mWidgetListener->WindowActivated();
+  else
+    mWidgetListener->WindowDeactivated();
+}
+
+//-----------------------------------------------------------------------------
+// Signal plugin window activation.
+
+bool nsWindow::DispatchPluginActivationEvent()
+{
+  nsGUIEvent event(true, NS_PLUGIN_ACTIVATE, this);
 
   // These events should go to their base widget location,
   // not current mouse position.
@@ -3289,17 +3493,7 @@ bool nsWindow::DispatchActivationEvent(uint32_t aEventType)
   InitEvent(event, &point);
 
   NPEvent pluginEvent;
-  switch (aEventType) {
-    case NS_ACTIVATE:
-      pluginEvent.event = WM_SETFOCUS;
-      break;
-    case NS_DEACTIVATE:
-      pluginEvent.event = WM_FOCUSCHANGED;
-      break;
-    case NS_PLUGIN_ACTIVATE:
-      pluginEvent.event = WM_FOCUSCHANGED;
-      break;
-  }
+  pluginEvent.event = WM_FOCUSCHANGED;
   event.pluginEvent = (void*)&pluginEvent;
 
   return DispatchWindowEvent(&event);
@@ -3321,25 +3515,25 @@ bool nsWindow::DispatchScrollEvent(ULONG msg, MPARAM mp1, MPARAM mp2)
   switch (SHORT2FROMMP(mp2)) {
     case SB_LINEUP:
     //   SB_LINELEFT:
-      wheelEvent.deltaMode = nsIDOMWheelEvent.DOM_DELTA_LINE;
+      wheelEvent.deltaMode = nsIDOMWheelEvent::DOM_DELTA_LINE;
       delta = -1;
       break;
 
     case SB_LINEDOWN:
     //   SB_LINERIGHT:
-      wheelEvent.deltaMode = nsIDOMWheelEvent.DOM_DELTA_LINE;
+      wheelEvent.deltaMode = nsIDOMWheelEvent::DOM_DELTA_LINE;
       delta = 1;
       break;
 
     case SB_PAGEUP:
     //   SB_PAGELEFT:
-      wheelEvent.deltaMode = nsIDOMWheelEvent.DOM_DELTA_PAGE;
+      wheelEvent.deltaMode = nsIDOMWheelEvent::DOM_DELTA_PAGE;
       delta = -1;
       break;
 
     case SB_PAGEDOWN:
     //   SB_PAGERIGHT:
-      wheelEvent.deltaMode = nsIDOMWheelEvent.DOM_DELTA_PAGE;
+      wheelEvent.deltaMode = nsIDOMWheelEvent::DOM_DELTA_PAGE;
       delta = 1;
       break;
 
@@ -3359,4 +3553,3 @@ bool nsWindow::DispatchScrollEvent(ULONG msg, MPARAM mp1, MPARAM mp2)
 }
 
 //=============================================================================
-
