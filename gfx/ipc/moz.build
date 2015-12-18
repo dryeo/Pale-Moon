@@ -19,7 +19,15 @@ if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'windows':
         'SharedDIBWin.cpp',
         'SharedDIBSurface.cpp',
     ]
-
+elif CONFIG['MOZ_WIDGET_TOOLKIT'] == 'os2':
+    EXPORTS.mozilla.gfx += [
+        'SharedDIBOS2.h',
+        'SharedDIBSurface.h',
+    ]
+    CPP_SOURCES += [
+        'SharedDIBOS2.cpp',
+        'SharedDIBSurface.cpp',
+    ]
 CPP_SOURCES += [
     'SharedDIB.cpp',
 ]

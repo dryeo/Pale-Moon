@@ -38,6 +38,11 @@
 #include "gfxQPainterSurface.h"
 #endif
 
+#ifdef CAIRO_HAS_OS2_SURFACE
+#include <os2.h>
+#include "gfxOS2Surface.h"
+#endif
+
 #include <stdio.h>
 #include <limits.h>
 
@@ -168,6 +173,12 @@ gfxASurface::Wrap (cairo_surface_t *csurf)
 #if defined(CAIRO_HAS_QT_SURFACE) && defined(MOZ_WIDGET_QT)
     else if (stype == CAIRO_SURFACE_TYPE_QT) {
         result = new gfxQPainterSurface(csurf);
+    }
+#endif
+#ifdef CAIRO_HAS_OS2_SURFACE
+    else if (stype == CAIRO_SURFACE_TYPE_OS2 ||
+             stype == CAIRO_SURFACE_TYPE_OS2_PRINTING) {
+        result = new gfxOS2Surface(csurf);
     }
 #endif
     else {
@@ -577,6 +588,7 @@ static const SurfaceMemoryReporterAttrs sSurfaceMemoryReporterAttrs[] = {
     {"gfx-surface-skia", nullptr},
     {"gfx-surface-subsurface", nullptr},
     {"gfx-surface-d2d", nullptr},
+    {"gfx-surface-os2printing", nullptr},
 };
 
 PR_STATIC_ASSERT(NS_ARRAY_LENGTH(sSurfaceMemoryReporterAttrs) ==

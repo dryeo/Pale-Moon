@@ -3,6 +3,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#include <os2.h>
+#include "cairo-ft.h" // includes fontconfig.h, too
+#include <ft2build.h>
+#include FT_TRUETYPE_TABLES_H
+
 #include "gfxContext.h"
 
 #include "gfxOS2Platform.h"
@@ -477,9 +482,8 @@ already_AddRefed<gfxOS2Font> gfxOS2Font::GetOrMakeFont(const nsAString& aName,
             return nullptr;
         gfxFontCache::GetCache()->AddNew(font);
     }
-    gfxFont *f = nullptr;
-    font.swap(f);
-    return static_cast<gfxOS2Font *>(f);
+    nsRefPtr<gfxOS2Font> f = static_cast<gfxOS2Font *>(font.get());
+    return f.forget();
 }
 
 /**********************************************************************
@@ -527,7 +531,7 @@ gfxOS2FontGroup::gfxOS2FontGroup(const nsAString& aFamilies,
     for (uint32_t i = 0; i < familyArray.Length(); i++) {
         nsRefPtr<gfxOS2Font> font = gfxOS2Font::GetOrMakeFont(familyArray[i], &mStyle);
         if (font) {
-            mFonts.AppendElement(font);
+            mFonts.AppendElement(FamilyFace(NULL, font));
         }
     }
 }
@@ -559,7 +563,16 @@ static int32_t AppendDirectionalIndicatorUTF8(bool aIsRTL, nsACString& aString)
 gfxTextRun *gfxOS2FontGroup::MakeTextRun(const PRUnichar* aString, uint32_t aLength,
                                          const Parameters* aParams, uint32_t aFlags)
 {
-    NS_ASSERTION(aLength > 0, "should use MakeEmptyTextRun for zero-length text");
+    if (aLength == 0) {
+        return MakeEmptyTextRun(aParams, aFlags);
+    }
+    if (aLength == 1 && aString[0] == ' ') {
+        return MakeSpaceTextRun(aParams, aFlags);
+    }
+    if (GetStyle()->size == 0) {
+        return MakeBlankTextRun(aLength, aParams, aFlags);
+    }
+
     gfxTextRun *textRun = gfxTextRun::Create(aParams, aLength, this, aFlags);
     if (!textRun)
         return nullptr;
@@ -592,8 +605,23 @@ gfxTextRun *gfxOS2FontGroup::MakeTextRun(const uint8_t* aString, uint32_t aLengt
     printf("gfxOS2FontGroup[%#x]::MakeTextRun(uint8_t %s, %d, %#x, %d)\n",
            (unsigned)this, NS_LossyConvertUTF16toASCII(us).get(), aLength, (unsigned)aParams, aFlags);
 #endif
-    NS_ASSERTION(aLength > 0, "should use MakeEmptyTextRun for zero-length text");
-    NS_ASSERTION(aFlags & TEXT_IS_8BIT, "8bit should have been set");
+
+    if (aLength == 0) {
+        return MakeEmptyTextRun(aParams, aFlags);
+    }
+    if (aLength == 1 && aString[0] == ' ') {
+        return MakeSpaceTextRun(aParams, aFlags);
+    }
+
+    aFlags |= TEXT_IS_8BIT;
+
+    if (GetStyle()->size == 0) {
+        // Short-circuit for size-0 fonts, as Windows and ATSUI can't handle
+        // them, and always create at least size 1 fonts, i.e. they still
+        // render something for size 0 fonts.
+        return MakeBlankTextRun(aLength, aParams, aFlags);
+    }
+
     gfxTextRun *textRun = gfxTextRun::Create(aParams, aLength, this, aFlags);
     if (!textRun)
         return nullptr;
@@ -672,7 +700,6 @@ void gfxOS2FontGroup::CreateGlyphRunsFT(gfxTextRun *aTextRun, const uint8_t *aUT
     gfxOS2Font *font0 = GetFontAt(0);
     const uint8_t *p = aUTF8;
     uint32_t utf16Offset = 0;
-    gfxTextRun::CompressedGlyph g;
     const uint32_t appUnitsPerDevUnit = aTextRun->GetAppUnitsPerDevUnit();
     gfxOS2Platform *platform = gfxOS2Platform::GetPlatform();
 
@@ -692,7 +719,15 @@ void gfxOS2FontGroup::CreateGlyphRunsFT(gfxTextRun *aTextRun, const uint8_t *aUT
 
         if (ch == 0 || platform->noFontWithChar(ch)) {
             // null bytes or missing characters cannot be displayed
-            aTextRun->SetMissingGlyph(utf16Offset, ch);
+            aTextRun->SetMissingGlyph(utf16Offset, ch, font0);
+        } else if (ch == '\n') {
+            // tab and newline are not to be displayed as hexboxes,
+            // but do need to be recorded in the textrun
+            aTextRun->SetIsNewline(utf16Offset);
+        } else if (ch == '\t') {
+            aTextRun->SetIsTab(utf16Offset);
+        } else if (IsInvalidChar(PRUnichar(ch))) {
+            // invalid chars are left as zero-width/invisible
         } else {
             // Try to get a glyph from all fonts available to us.
             // Once we found it in one of the fonts we quit the loop early.
@@ -718,7 +753,6 @@ void gfxOS2FontGroup::CreateGlyphRunsFT(gfxTextRun *aTextRun, const uint8_t *aUT
                     continue; // next font
                 }
 
-                NS_ASSERTION(!IsInvalidChar(ch), "Invalid char detected");
                 FT_UInt gid = FT_Get_Char_Index(face, ch); // find the glyph id
 
                 if (gid == 0 && i == lastFont) {
@@ -731,7 +765,7 @@ void gfxOS2FontGroup::CreateGlyphRunsFT(gfxTextRun *aTextRun, const uint8_t *aUT
                         gid = FT_Get_Char_Index(face, ch);
                         // likely to find more chars in this font, append it
                         // to the font list to find it quicker next time
-                        mFonts.AppendElement(fontX);
+                        mFonts.AppendElement(FamilyFace(NULL, fontX));
                         lastFont = FontListLength()-1;
                     }
                 }
@@ -789,18 +823,18 @@ void gfxOS2FontGroup::CreateGlyphRunsFT(gfxTextRun *aTextRun, const uint8_t *aUT
 #endif
 
                 if (advance >= 0 &&
-                    gfxTextRun::CompressedGlyph::IsSimpleAdvance(advance) &&
-                    gfxTextRun::CompressedGlyph::IsSimpleGlyphID(gid))
+                    gfxShapedText::CompressedGlyph::IsSimpleAdvance(advance) &&
+                    gfxShapedText::CompressedGlyph::IsSimpleGlyphID(gid))
                 {
-                    aTextRun->SetSimpleGlyph(utf16Offset,
-                                             g.SetSimpleGlyph(advance, gid));
+                    aTextRun->GetCharacterGlyphs()[utf16Offset].
+                        SetSimpleGlyph(advance, gid);
                     glyphFound = true;
                 } else if (gid == 0) {
                     // gid = 0 only happens when the glyph is missing from the font
                     if (i == lastFont) {
                         // set the missing glyph only when it's missing from the very
                         // last font
-                        aTextRun->SetMissingGlyph(utf16Offset, ch);
+                        aTextRun->SetMissingGlyph(utf16Offset, ch, font0);
                     }
                     glyphFound = false;
                 } else {
@@ -810,6 +844,7 @@ void gfxOS2FontGroup::CreateGlyphRunsFT(gfxTextRun *aTextRun, const uint8_t *aUT
                     details.mAdvance = advance;
                     details.mXOffset = 0;
                     details.mYOffset = 0;
+                    gfxShapedText::CompressedGlyph g;
                     g.SetComplex(aTextRun->IsClusterStart(utf16Offset), true, 1);
                     aTextRun->SetGlyphs(utf16Offset, g, &details);
                     glyphFound = true;

@@ -35,8 +35,8 @@ if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'windows':
 elif CONFIG['MOZ_WIDGET_TOOLKIT'] == 'os2':
     EXPORTS.cairo += [
         'cairo-os2.h',
-        'cairo-os2-private.h',
         'cairo-pdf.h',
+        'cairo-ps.h',
     ]
 elif CONFIG['MOZ_WIDGET_TOOLKIT'] == 'cocoa':
     EXPORTS.cairo += [
