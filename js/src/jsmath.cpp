@@ -656,6 +656,10 @@ random_generateSeed()
      * probably overkill.
      */
     rand_s(&seed.u32[0]);
+#elif defined(XP_OS2) && defined(__KLIBC__)
+    /* based on a snippet from kLIBC's lib/sys/fs.c */
+    __asm__ __volatile__ ("rdtsc" : "=A" (seed.u64));
+    seed.u32[0] = nrand48(seed.u16);
 #elif defined(XP_UNIX)
     /*
      * In the unlikely event we can't read /dev/urandom, there's not much we can

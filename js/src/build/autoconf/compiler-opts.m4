@@ -104,8 +104,12 @@ if test -z "$GNU_CC"; then
 fi
 
 if test "$GNU_CC"; then
-    CFLAGS="$CFLAGS -ffunction-sections -fdata-sections"
-    CXXFLAGS="$CXXFLAGS -ffunction-sections -fdata-sections -fno-exceptions"
+    if test "$OS_TARGET" = "OS2"; then
+        CXXFLAGS="$CXXFLAGS -fno-exceptions"
+    else
+        CFLAGS="$CFLAGS -ffunction-sections -fdata-sections"
+        CXXFLAGS="$CXXFLAGS -ffunction-sections -fdata-sections -fno-exceptions"
+    fi
 fi
 
 dnl ========================================================

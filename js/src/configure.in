@@ -1844,7 +1844,6 @@ ia64*-hpux*)
     AC_DEFINE(OS2)
     AC_DEFINE(XP_OS2)
     AC_DEFINE(OS2EMX_PLAIN_CHAR)
-    AC_DEFINE(TCPV40HDRS)
     DLL_PREFIX=
     LIB_PREFIX=
     LIB_SUFFIX=lib
@@ -1860,11 +1859,18 @@ ia64*-hpux*)
     BIN_FLAGS='-Zlinker /ST:0x100000'
     IMPLIB='emximp -o'
     FILTER='true'
-    LDFLAGS='-Zmap'
+    LDFLAGS="$LDFLAGS -Zomf -Zmap"
+    if test "$EMXOMFLD_TYPE" = "WLINK" -o "$EMXOMFLD_TYPE" = "wlink"; then
+        LDFLAGS="$LDFLAGS -Zlinker 'DISABLE 1121'"
+    fi
     WARNINGS_AS_ERRORS='-Werror'
-    MOZ_DEBUG_FLAGS="-g -fno-inline"
+    MOZ_DEBUG_FLAGS="-fno-inline"
     MOZ_OPTIMIZE_FLAGS="-O2"
-    MOZ_OPTIMIZE_LDFLAGS="-s -Zlinker /EXEPACK:2 -Zlinker /PACKCODE -Zlinker /PACKDATA"
+    if test "$EMXOMFLD_TYPE" = "WLINK" -o "$EMXOMFLD_TYPE" = "wlink"; then
+        MOZ_OPTIMIZE_LDFLAGS=
+    else
+        MOZ_OPTIMIZE_LDFLAGS="-Zlinker /EXEPACK:2 -Zlinker /PACKCODE -Zlinker /PACKDATA"
+    fi
     DYNAMIC_XPCOM_LIBS='-L$(LIBXUL_DIST)/lib $(LIBXUL_DIST)/lib/xpcom.lib $(LIBXUL_DIST)/lib/xpcom_core.lib $(LIBXUL_DIST)/lib/mozalloc.lib'
     LIBXUL_LIBS='-L$(LIBXUL_DIST)/lib $(LIBXUL_DIST)/lib/xpcom.lib $(LIBXUL_DIST)/lib/xul.lib $(LIBXUL_DIST)/lib/mozalloc.lib'
     TARGET_MD_ARCH=os2
@@ -1874,11 +1880,6 @@ ia64*-hpux*)
     RCFLAGS='-n'
     MOZ_USER_DIR="Mozilla"
 
-    if test "$MOZTOOLS"; then
-        MOZ_TOOLS_DIR=`echo $MOZTOOLS | sed -e 's|\\\\|/|g'`
-    else
-        AC_MSG_ERROR([MOZTOOLS is not set])
-    fi
     if test -n "$MOZ_OS2_HIGH_MEMORY"; then
         DSO_LDOPTS="$DSO_LDOPTS -Zhigh-mem"
         LDFLAGS="$LDFLAGS -Zhigh-mem"
@@ -3401,7 +3402,7 @@ MOZ_ARG_ENABLE_STRING(debug-symbols,
   fi ],
   MOZ_DEBUG_SYMBOLS=1)
 
-if test -n "$MOZ_DEBUG" -o -n "$MOZ_DEBUG_SYMBOLS"; then
+if test \( -n "$MOZ_DEBUG" -a "$OS_ARCH" != "OS2" \) -o -n "$MOZ_DEBUG_SYMBOLS"; then
     AC_DEFINE(MOZ_DEBUG_SYMBOLS)
     export MOZ_DEBUG_SYMBOLS
 fi
@@ -3949,7 +3950,7 @@ dnl ========================================================
 dnl Check for gcc -pipe support
 dnl ========================================================
 AC_MSG_CHECKING([for -pipe support])
-if test -n "$GNU_CC" -a -n "$GNU_CXX"; then
+if test "$OS_ARCH" != "OS2" -a -n "$GNU_CC" -a -n "$GNU_CXX"; then
     dnl Any gcc that supports firefox supports -pipe.
     CFLAGS="$CFLAGS -pipe"
     CXXFLAGS="$CXXFLAGS -pipe"
@@ -4592,7 +4593,7 @@ if test "$JS_HAS_CTYPES" -a -z "$MOZ_NATIVE_FFI"; then
     fi
   fi
   if test "$OS_ARCH" = "OS2"; then
-    ac_configure_args="$ac_configure_args CFLAGS=-Zomf AR=emxomfar"
+    ac_configure_args="$ac_configure_args CFLAGS=-Zomf LDFLAGS=-Zomf AR=emxomfar"
   fi
 
   # Use a separate cache file for libffi, since it does things differently
