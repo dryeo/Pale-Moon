@@ -3,6 +3,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#if defined(XP_OS2)
+#define INCL_BASE
+#include <os2.h>
+#endif
+
 #include "nsXULAppAPI.h"
 #include "mozilla/AppData.h"
 #include "application.ini.h"
@@ -12,6 +17,9 @@
 #include <stdlib.h>
 #include <io.h>
 #include <fcntl.h>
+#elif defined(XP_OS2)
+#include <time.h>
+#include <unistd.h>
 #elif defined(XP_UNIX)
 #include <sys/resource.h>
 #include <time.h>
@@ -64,6 +72,14 @@ static void Output(const char *fmt, ... )
 #ifndef XP_WIN
   vfprintf(stderr, fmt, ap);
 #else
+#ifdef XP_OS2
+  char msg[2048];
+  vsnprintf(msg, sizeof(msg), fmt, ap);
+  HAB hab = WinInitialize(0);
+  WinCreateMsgQueue(hab, 0);
+  WinMessageBox(HWND_DESKTOP, 0, msg, "Firefox", 0,
+                MB_OK | MB_ERROR | MB_MOVEABLE);
+#endif
   char msg[2048];
   vsnprintf_s(msg, _countof(msg), _TRUNCATE, fmt, ap);
 
@@ -320,6 +336,22 @@ TimeStamp_Now()
   return sGetTickCount64() * freq.QuadPart;
 #elif defined(XP_MACOSX)
   return mach_absolute_time();
+#elif defined(XP_OS2)
+  const char *envp;
+  // Use the same variable as NSPR's os2inrval.c does to let the user disable the
+  // high-resolution timer (it is known that it doesn't work well on some hardware)
+  if ((envp = getenv("NSPR_OS2_NO_HIRES_TIMER")) != NULL) {
+    if (atoi(envp) != 1) {
+      // Attempt to use the high-res timer
+      QWORD timestamp;
+      APIRET rc = DosTmrQueryTime(&timestamp);
+      if (rc == NO_ERROR)
+        return (uint64_t(timestamp.ulHi) << 32) + timestamp.ulLo;
+    }
+  }
+  ULONG msCount = -1;
+  DosQuerySysInfo(QSV_MS_COUNT, QSV_MS_COUNT, &msCount, sizeof(msCount));
+  return msCount;
 #elif defined(HAVE_CLOCK_MONOTONIC)
   struct timespec ts;
   int rv = clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -421,7 +453,7 @@ InitXPCOMGlue(const char *argv0, nsIFile **xreDirectory)
 
   rv = XPCOMGlueStartup(exePath);
   if (NS_FAILED(rv)) {
-    Output("Couldn't load XPCOM.\n");
+    Output("Couldn't load %s.\n", XPCOM_DLL);
     return rv;
   }
 

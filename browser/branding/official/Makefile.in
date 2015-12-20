@@ -34,6 +34,13 @@ BRANDING_FILES := \
 	$(NULL)
 endif
 
+ifeq ($(OS_ARCH),OS2)
+BRANDING_FILES := \
+	firefox-os2.ico \
+	document-os2.ico \
+	$(NULL)
+endif
+
 ifeq ($(MOZ_WIDGET_TOOLKIT),cocoa)
 BRANDING_FILES := \
 	background.png \
