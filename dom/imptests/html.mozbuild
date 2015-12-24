@@ -26,3 +26,7 @@ DIRS += [
     'html/typedarrays',
     'html/webgl',
 ]
+
+# make has a bug that causes processing of VPATH to fail with "File name too long" for these
+if CONFIG['OS_ARCH'] != 'OS2':
+    DIRS += ['html/html/browsers/the-window-object/named-access-on-the-window-object']

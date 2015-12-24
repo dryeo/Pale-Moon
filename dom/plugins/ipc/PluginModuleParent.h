@@ -30,6 +30,24 @@
 #include "nsHashKeys.h"
 #include "nsIFileStreams.h"
 
+// NOTE: stolen from nsNPAPIPlugin.h
+
+/*
+ * Use this macro before each exported function
+ * (between the return address and the function
+ * itself), to ensure that the function has the
+ * right calling conventions on OS/2.
+ */
+#define NP_CALLBACK NP_LOADDS
+
+#if defined(XP_WIN)
+#define NS_NPAPIPLUGIN_CALLBACK(_type, _name) _type (__stdcall * _name)
+#elif defined(XP_OS2)
+#define NS_NPAPIPLUGIN_CALLBACK(_type, _name) _type (_System * _name)
+#else
+#define NS_NPAPIPLUGIN_CALLBACK(_type, _name) _type (* _name)
+#endif
+
 namespace mozilla {
 namespace plugins {
 //-----------------------------------------------------------------------------

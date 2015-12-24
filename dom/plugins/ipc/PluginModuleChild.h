@@ -315,7 +315,7 @@ private:
     NP_PLUGINSHUTDOWN mShutdownFunc;
 #if defined(OS_LINUX) || defined(OS_BSD)
     NP_PLUGINUNIXINIT mInitializeFunc;
-#elif defined(OS_WIN) || defined(OS_MACOSX)
+#elif defined(OS_WIN) || defined(XP_OS2) || defined(OS_MACOSX)
     NP_PLUGININIT mInitializeFunc;
     NP_GETENTRYPOINTS mGetEntryPointsFunc;
 #endif

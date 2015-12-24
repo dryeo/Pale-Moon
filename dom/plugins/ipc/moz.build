@@ -20,6 +20,7 @@ EXPORTS.mozilla.plugins += [
     'ChildAsyncCall.h',
     'ChildTimer.h',
     'NPEventAndroid.h',
+    'NPEventOS2.h',
     'NPEventOSX.h',
     'NPEventUnix.h',
     'NPEventWindows.h',
@@ -52,6 +53,14 @@ if CONFIG['OS_ARCH'] == 'WINNT':
         'PluginSurfaceParent.cpp',
         'MiniShmParent.cpp',
         'PluginHangUIParent.cpp',
+    ]
+
+if CONFIG['OS_ARCH'] == 'OS2':
+    EXPORTS.mozilla.plugins += [
+        'PluginSurfaceParent.h',
+    ]
+    CPP_SOURCES += [
+        'PluginSurfaceParent.cpp',
     ]
 
 if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'cocoa':

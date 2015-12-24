@@ -32,6 +32,11 @@
 extern const PRUnichar* kFlashFullscreenClass;
 using mozilla::gfx::SharedDIBSurface;
 #endif
+#ifdef XP_OS2
+#include "mozilla/gfx/SharedDIBSurface.h"
+using mozilla::gfx::SharedDIBSurface;
+using mozilla::gfx::SharedDIB;
+#endif
 #include "gfxSharedImageSurface.h"
 #include "gfxUtils.h"
 #include "gfxAlphaRecovery.h"
@@ -127,6 +132,11 @@ PluginInstanceChild::PluginInstanceChild(const NPPluginFuncs* aPluginIface)
     , mWinlessThrottleOldWndProc(0)
     , mWinlessHiddenMsgHWND(0)
 #endif // OS_WIN
+#if defined(XP_OS2)
+    , mPluginWindowHWND(0)
+    , mPluginParentHWND(0)
+    , mCachedWinlessPluginHWND(0)
+#endif // XP_OS2
     , mAsyncCallMutex("PluginInstanceChild::mAsyncCallMutex")
 #if defined(MOZ_WIDGET_COCOA)
 #if defined(__i386__)
@@ -138,7 +148,7 @@ PluginInstanceChild::PluginInstanceChild(const NPPluginFuncs* aPluginIface)
     , mCurrentEvent(nullptr)
 #endif
     , mLayersRendering(false)
-#ifdef XP_WIN
+#if defined(XP_WIN) || defined(XP_OS2)
     , mCurrentSurfaceActor(NULL)
     , mBackSurfaceActor(NULL)
 #endif
@@ -180,7 +190,7 @@ PluginInstanceChild::PluginInstanceChild(const NPPluginFuncs* aPluginIface)
 
 PluginInstanceChild::~PluginInstanceChild()
 {
-#if defined(OS_WIN)
+#if defined(OS_WIN) || defined(XP_OS2)
     NS_ASSERTION(!mPluginWindowHWND, "Destroying PluginInstanceChild without NPP_Destroy?");
 #endif
 #if defined(MOZ_WIDGET_COCOA)
@@ -319,7 +329,7 @@ PluginInstanceChild::NPN_GetValue(NPNVariable aVar,
         *(void **)aValue = mWsInfo.display;
         return NPERR_NO_ERROR;
     
-#elif defined(OS_WIN)
+#elif defined(OS_WIN) || defined(XP_OS2)
     case NPNVToolkit:
         return NPERR_GENERIC_ERROR;
 #endif
@@ -356,7 +366,7 @@ PluginInstanceChild::NPN_GetValue(NPNVariable aVar,
     }
 
     case NPNVnetscapeWindow: {
-#ifdef XP_WIN
+#if defined(XP_WIN) || defined (XP_OS2)
         if (mWindow.type == NPWindowTypeDrawable) {
             if (mCachedWinlessPluginHWND) {
               *static_cast<HWND*>(aValue) = mCachedWinlessPluginHWND;
@@ -1169,7 +1179,7 @@ PluginInstanceChild::AnswerNPP_SetWindow(const NPRemoteWindow& aWindow)
     if (mPluginIface->setwindow)
         (void) mPluginIface->setwindow(&mData, &mWindow);
 
-#elif defined(OS_WIN)
+#elif defined(OS_WIN) || defined(XP_OS2)
     switch (aWindow.type) {
       case NPWindowTypeWindow:
       {
@@ -1194,6 +1204,7 @@ PluginInstanceChild::AnswerNPP_SetWindow(const NPRemoteWindow& aWindow)
           mWindow.type = aWindow.type;
 
           if (mPluginIface->setwindow) {
+#if defined(OS_WIN)
               SetProp(mPluginWindowHWND, kPluginIgnoreSubclassProperty, (HANDLE)1);
               (void) mPluginIface->setwindow(&mData, &mWindow);
               WNDPROC wndProc = reinterpret_cast<WNDPROC>(
@@ -1206,16 +1217,21 @@ PluginInstanceChild::AnswerNPP_SetWindow(const NPRemoteWindow& aWindow)
               }
               RemoveProp(mPluginWindowHWND, kPluginIgnoreSubclassProperty);
               HookSetWindowLongPtr();
+#else
+              (void) mPluginIface->setwindow(&mData, &mWindow);
+#endif
           }
       }
       break;
 
       case NPWindowTypeDrawable:
           mWindow.type = aWindow.type;
+#if defined(OS_WIN)
           if (GetQuirks() & PluginModuleChild::QUIRK_WINLESS_TRACKPOPUP_HOOK)
               CreateWinlessPopupSurrogate();
           if (GetQuirks() & PluginModuleChild::QUIRK_FLASH_THROTTLE_WMUSER_EVENTS)
               SetupFlashMsgThrottle();
+#endif
           return SharedSurfaceSetWindow(aWindow);
       break;
 
@@ -2180,6 +2196,199 @@ PluginInstanceChild::FlashThrottleMessage(HWND aWnd,
 
 #endif // OS_WIN
 
+#if defined(XP_OS2)
+
+static const char kWindowClassName[] = "GoannaPluginWindow";
+
+enum {
+    WD_User          = 0, // this is reserved for QWL_USER (used by e.g. Flash plugin)
+    WD_InstanceChild = 4,
+    WD_Last = WD_InstanceChild
+};
+
+// static
+bool
+PluginInstanceChild::RegisterWindowClass()
+{
+    static bool alreadyRegistered = false;
+    if (alreadyRegistered)
+        return true;
+
+    alreadyRegistered = true;
+
+    return WinRegisterClass(0, kWindowClassName, PluginWindowProc, 0, WD_Last + 4) == TRUE;
+}
+
+bool
+PluginInstanceChild::CreatePluginWindow()
+{
+    // already initialized
+    if (mPluginWindowHWND)
+        return true;
+
+    if (!RegisterWindowClass())
+        return false;
+
+    mPluginWindowHWND =
+        WinCreateWindow(HWND_OBJECT, kWindowClassName, NULL,
+                        WS_SAVEBITS | WS_CLIPCHILDREN | WS_CLIPSIBLINGS,
+                        0, 0, 0, 0, NULL, HWND_BOTTOM, 0, NULL, NULL);
+    if (!mPluginWindowHWND)
+        return false;
+    if (!WinSetWindowPtr(mPluginWindowHWND, WD_InstanceChild, this))
+        return false;
+
+    return true;
+}
+
+void
+PluginInstanceChild::DestroyPluginWindow()
+{
+    if (mPluginWindowHWND) {
+        WinDestroyWindow(mPluginWindowHWND);
+        mPluginWindowHWND = 0;
+    }
+}
+
+void
+PluginInstanceChild::ReparentPluginWindow(HWND hWndParent)
+{
+    if (hWndParent != mPluginParentHWND && WinIsWindow(0, hWndParent)) {
+        // Do the reparenting.
+        WinSetParent(mPluginWindowHWND, hWndParent, TRUE);
+
+        // Make sure we're visible.
+        WinShowWindow(mPluginWindowHWND, TRUE);
+
+    }
+    mPluginParentHWND = hWndParent;
+}
+
+void
+PluginInstanceChild::SizePluginWindow(int width,
+                                      int height)
+{
+    if (mPluginWindowHWND) {
+        mPluginSize.x = width;
+        mPluginSize.y = height;
+        WinSetWindowPos(mPluginWindowHWND, NULL, 0, 0, width, height,
+                        SWP_SIZE);
+    }
+}
+
+int16_t
+PluginInstanceChild::WinlessHandleEvent(NPEvent& event)
+{
+    if (!mPluginIface->event)
+        return false;
+
+    // Events that might generate nested event dispatch loops need
+    // special handling during delivery.
+    int16_t handled;
+
+    handled = mPluginIface->event(&mData, reinterpret_cast<void*>(&event));
+
+    return handled;
+}
+
+// static
+MRESULT EXPENTRY
+PluginInstanceChild::PluginWindowProc(HWND hWnd,
+                                      ULONG message,
+                                      MPARAM mp1,
+                                      MPARAM mp2)
+{
+    NS_ASSERTION(!mozilla::ipc::SyncChannel::IsPumpingMessages(),
+                 "Failed to prevent a nonqueued message from running!");
+    PluginInstanceChild* self = reinterpret_cast<PluginInstanceChild*>(
+        WinQueryWindowPtr(hWnd, WD_InstanceChild));
+    if (!self) {
+        NS_NOTREACHED("Badness!");
+        return 0;
+    }
+
+    if (!self->mPluginIface->setwindow) {
+        // if the plugin doesn't provide a setwindow callback, no need for special handling
+        return WinDefWindowProc(hWnd, message, mp1, mp2);
+    }
+
+    NS_ASSERTION(self->mPluginWindowHWND == hWnd, "Wrong window!");
+
+    // Adobe's shockwave positions the plugin window relative to the browser
+    // frame when it initializes. With oopp disabled, this wouldn't have an
+    // effect. With oopp, GoannaPluginWindow is a child of the parent plugin
+    // window, so the move offsets the child within the parent. Generally
+    // we don't want plugins moving or sizing our window, so we prevent these
+    // changes here.
+    if (message == WM_ADJUSTWINDOWPOS) {
+        PSWP pswp = reinterpret_cast<PSWP>(mp1);
+        if (pswp && ((pswp->fl & SWP_MOVE) || (pswp->fl & SWP_SIZE))) {
+            pswp->cx = pswp->cy = 0;
+            pswp->cx = self->mPluginSize.x;
+            pswp->cy = self->mPluginSize.y;
+            MRESULT res = WinDefWindowProc(hWnd, message, mp1, mp2);
+            pswp->cx = pswp->cy = 0;
+            pswp->cx = self->mPluginSize.x;
+            pswp->cy = self->mPluginSize.y;
+            return res;
+        }
+    }
+
+    // The plugin received or lost keyboard focus, let the parent know so the dom is up to date.
+    if (message == WM_SETFOCUS)
+      self->CallPluginFocusChange(SHORT1FROMMP(mp2) == TRUE);
+
+    MRESULT res = WinDefWindowProc(hWnd, message, mp1, mp2);
+
+    if (message == WM_CLOSE)
+        self->DestroyPluginWindow();
+
+    return res;
+}
+
+/* windowless drawing helpers */
+
+bool
+PluginInstanceChild::SharedSurfaceSetWindow(const NPRemoteWindow& aWindow)
+{
+    // If the surfaceHandle is empty, parent is telling us we can reuse our cached
+    // memory surface and hps. Otherwise, we need to reset, usually due to a
+    // expanding plugin port size.
+    if (!aWindow.surfaceHandle) {
+        if (!mSharedSurfaceDib.IsValid()) {
+            return false;
+        }
+    }
+    else {
+        // Attach to the new shared surface parent handed us.
+        if (NS_FAILED(mSharedSurfaceDib.Attach((SharedDIB::Handle)aWindow.surfaceHandle,
+                                               aWindow.width, aWindow.height, false)))
+          return false;
+    }
+
+    // NPRemoteWindow's origin is the origin of our shared dib.
+    mWindow.x      = aWindow.x;
+    mWindow.y      = aWindow.y;
+    mWindow.width  = aWindow.width;
+    mWindow.height = aWindow.height;
+    mWindow.type   = aWindow.type;
+
+    mWindow.window = reinterpret_cast<void*>(mSharedSurfaceDib.GetHPS());
+
+    if (mPluginIface->setwindow)
+        mPluginIface->setwindow(&mData, &mWindow);
+
+    return true;
+}
+
+void
+PluginInstanceChild::SharedSurfaceRelease()
+{
+    mSharedSurfaceDib.Close();
+}
+
+#endif // XP_OS2
+
 bool
 PluginInstanceChild::AnswerSetPluginFocus()
 {
@@ -2399,7 +2608,7 @@ StreamNotifyChild::NPP_URLNotify(NPReason reason)
 {
     PluginInstanceChild* instance = static_cast<PluginInstanceChild*>(Manager());
 
-    if (mClosure)
+    if (mClosure && instance->mPluginIface->urlnotify)
         instance->mPluginIface->urlnotify(instance->GetNPP(), mURL.get(),
                                           reason, mClosure);
 }
@@ -2800,9 +3009,6 @@ PluginInstanceChild::DoAsyncSetWindow(const gfxSurfaceType& aSurfaceType,
         mCurrentAsyncSetWindowTask = nullptr;
     }
 
-    // Used to track whether we actually change any window property values.
-    bool windowChanged = false;
-
     mWindow.window = NULL;
     if (mWindow.width != aWindow.width || mWindow.height != aWindow.height ||
         mWindow.clipRect.top != aWindow.clipRect.top ||
@@ -2815,7 +3021,7 @@ PluginInstanceChild::DoAsyncSetWindow(const gfxSurfaceType& aSurfaceType,
         windowChanged = mWindow.x != aWindow.x || mWindow.y != aWindow.y ||
             mWindow.type != aWindow.type;
     }
-    
+
     mWindow.x = aWindow.x;
     mWindow.y = aWindow.y;
     mWindow.width = aWindow.width;
@@ -2837,7 +3043,7 @@ PluginInstanceChild::DoAsyncSetWindow(const gfxSurfaceType& aSurfaceType,
     if (windowChanged) {
         UpdateWindowAttributes(true);
     }
-  
+
 #ifdef XP_WIN
     if (GetQuirks() & PluginModuleChild::QUIRK_WINLESS_TRACKPOPUP_HOOK)
         CreateWinlessPopupSurrogate();
@@ -3165,6 +3371,21 @@ PluginInstanceChild::UpdateWindowAttributes(bool aForceSetWindow)
         needWindowUpdate = true;
     }
 #endif // XP_WIN
+#ifdef XP_OS2
+    HPS ps = NULL;
+
+    if (curSurface) {
+        if (!SharedDIBSurface::IsSharedDIBSurface(curSurface))
+            NS_RUNTIMEABORT("Expected SharedDIBSurface!");
+
+        SharedDIBSurface* dibsurf = static_cast<SharedDIBSurface*>(curSurface.get());
+        ps = dibsurf->GetHPS();
+    }
+    if (mWindow.window != reinterpret_cast<void*>(ps)) {
+        mWindow.window = reinterpret_cast<void*>(ps);
+        needWindowUpdate = true;
+    }
+#endif // XP_WIN
 
     if (!needWindowUpdate) {
         return;
@@ -3172,7 +3393,7 @@ PluginInstanceChild::UpdateWindowAttributes(bool aForceSetWindow)
 
 #ifndef XP_MACOSX
     // Adjusting the window isn't needed for OSX
-#ifndef XP_WIN
+#if !defined(XP_WIN) && !defined(XP_OS2)
     // On Windows, we translate the device context, in order for the window
     // origin to be correct.
     mWindow.x = mWindow.y = 0;
@@ -3313,6 +3534,26 @@ PluginInstanceChild::PaintRectToPlatformSurface(const nsIntRect& aRect,
     ::SetViewportOrgEx((HDC) mWindow.window, -mWindow.x, -mWindow.y, NULL);
     ::SelectClipRgn((HDC) mWindow.window, NULL);
     ::IntersectClipRect((HDC) mWindow.window, rect.left, rect.top, rect.right, rect.bottom);
+    mPluginIface->event(&mData, reinterpret_cast<void*>(&paintEvent));
+#elif defined(XP_OS2)
+    NS_ASSERTION(SharedDIBSurface::IsSharedDIBSurface(aSurface),
+                 "Expected (SharedDIB) image surface.");
+    // This rect is in the window coordinate space. aRect is in the plugin
+    // coordinate space.
+    RECTL rcl = {
+        mWindow.x + aRect.x,
+        mWindow.y + aRect.y,
+        mWindow.x + aRect.XMost(),
+        mWindow.y + aRect.YMost()
+    };
+    NPEvent paintEvent = {
+        WM_PAINT,
+        0, 0
+    };
+
+    HRGN hrgnOld;
+    ::GpiSetClipRegion((HPS)mWindow.window, NULLHANDLE, &hrgnOld);
+    ::GpiIntersectClipRectangle((HPS)mWindow.window, &rcl);
     mPluginIface->event(&mData, reinterpret_cast<void*>(&paintEvent));
 #else
     NS_RUNTIMEABORT("Surface type not implemented.");
@@ -3663,7 +3904,7 @@ PluginInstanceChild::ShowPluginFrame()
         XSync(mWsInfo.display, False);
     } else
 #endif
-#ifdef XP_WIN
+#if defined(XP_WIN) || defined(XP_OS2)
     if (SharedDIBSurface::IsSharedDIBSurface(mCurrentSurface)) {
         SharedDIBSurface* s = static_cast<SharedDIBSurface*>(mCurrentSurface.get());
         if (!mCurrentSurfaceActor) {
@@ -3710,7 +3951,7 @@ PluginInstanceChild::ReadbackDifferenceRect(const nsIntRect& rect)
     if (mBackSurface->GetType() != gfxASurface::SurfaceTypeXlib &&
         !gfxSharedImageSurface::IsSharedImage(mBackSurface))
         return false;
-#elif defined(XP_WIN)
+#elif defined(XP_WIN) || defined(XP_OS2)
     if (!SharedDIBSurface::IsSharedDIBSurface(mBackSurface))
         return false;
 #else
@@ -3786,6 +4027,17 @@ PluginInstanceChild::InvalidateRect(NPRect* aInvalidRect)
       RECT rect = { aInvalidRect->left, aInvalidRect->top,
                     aInvalidRect->right, aInvalidRect->bottom };
       ::InvalidateRect(mPluginWindowHWND, &rect, FALSE);
+      return;
+    }
+#endif
+
+#ifdef XP_OS2
+    // Invalidate and draw locally for windowed plugins.
+    if (mWindow.type == NPWindowTypeWindow) {
+      NS_ASSERTION(::WinIsWindow(0, mPluginWindowHWND), "Bad window?!");
+      RECTL rcl = { aInvalidRect->left, aInvalidRect->top,
+                    aInvalidRect->right, aInvalidRect->bottom };
+      ::WinInvalidateRect(mPluginWindowHWND, &rcl, FALSE);
       return;
     }
 #endif
@@ -3968,17 +4220,17 @@ void
 PluginInstanceChild::SwapSurfaces()
 {
     nsRefPtr<gfxASurface> tmpsurf = mCurrentSurface;
-#ifdef XP_WIN
+#if defined(XP_WIN) || defined(XP_OS2)
     PPluginSurfaceChild* tmpactor = mCurrentSurfaceActor;
 #endif
 
     mCurrentSurface = mBackSurface;
-#ifdef XP_WIN
+#if defined(XP_WIN) || defined(XP_OS2)
     mCurrentSurfaceActor = mBackSurfaceActor;
 #endif
 
     mBackSurface = tmpsurf;
-#ifdef XP_WIN
+#if defined(XP_WIN) || defined(XP_OS2)
     mBackSurfaceActor = tmpactor;
 #endif
 
@@ -4016,7 +4268,7 @@ PluginInstanceChild::ClearCurrentSurface()
         mDoubleBufferCARenderer.ClearFrontSurface();
     }
 #endif
-#ifdef XP_WIN
+#if defined(XP_WIN) || defined(XP_OS2)
     if (mCurrentSurfaceActor) {
         PPluginSurfaceChild::Send__delete__(mCurrentSurfaceActor);
         mCurrentSurfaceActor = NULL;
@@ -4042,7 +4294,7 @@ PluginInstanceChild::ClearAllSurfaces()
     mCurrentSurface = nullptr;
     mBackSurface = nullptr;
 
-#ifdef XP_WIN
+#if defined(XP_WIN) || defined(XP_OS2)
     if (mCurrentSurfaceActor) {
         PPluginSurfaceChild::Send__delete__(mCurrentSurfaceActor);
         mCurrentSurfaceActor = NULL;
@@ -4147,6 +4399,11 @@ PluginInstanceChild::AnswerNPP_Destroy(NPError* aResult)
     SharedSurfaceRelease();
     DestroyWinlessPopupSurrogate();
     UnhookWinlessFlashThrottle();
+    DestroyPluginWindow();
+#endif
+
+#if defined(XP_OS2)
+    SharedSurfaceRelease();
     DestroyPluginWindow();
 #endif
 

@@ -90,18 +90,22 @@ typedef nsCString Buffer;
 struct NPRemoteWindow
 {
   NPRemoteWindow();
+#if defined(XP_OS2)
+  void* window;
+#else
   uint64_t window;
+#endif
   int32_t x;
   int32_t y;
   uint32_t width;
   uint32_t height;
   NPRect clipRect;
   NPWindowType type;
-#if defined(MOZ_X11) && defined(XP_UNIX) && !defined(XP_MACOSX)
+#if defined(MOZ_X11) && defined(XP_UNIX) && !defined(XP_MACOSX) && !defined(XP_OS2)
   VisualID visualID;
   Colormap colormap;
 #endif /* XP_UNIX */
-#if defined(XP_WIN)
+#if defined(XP_WIN) || defined(XP_OS2)
   base::SharedMemoryHandle surfaceHandle;
 #endif
 #if defined(XP_MACOSX)
@@ -109,7 +113,7 @@ struct NPRemoteWindow
 #endif
 };
 
-#ifdef XP_WIN
+#if defined(XP_WIN) || defined(XP_OS2)
 typedef HWND NativeWindowHandle;
 #elif defined(MOZ_X11)
 typedef XID NativeWindowHandle;
@@ -122,6 +126,9 @@ typedef intptr_t NativeWindowHandle; // never actually used, will always be 0
 #ifdef XP_WIN
 typedef base::SharedMemoryHandle WindowsSharedMemoryHandle;
 typedef HANDLE DXGISharedSurfaceHandle;
+#elif XP_OS2
+typedef base::SharedMemoryHandle WindowsSharedMemoryHandle;
+typedef mozilla::null_t DXGISharedSurfaceHandle;
 #else
 typedef mozilla::null_t WindowsSharedMemoryHandle;
 typedef mozilla::null_t DXGISharedSurfaceHandle;
@@ -368,7 +375,11 @@ struct ParamTraits<mozilla::plugins::NPRemoteWindow>
 
   static void Write(Message* aMsg, const paramType& aParam)
   {
+#if defined(XP_OS2)
+    WriteParam(aMsg, aParam.window);
+#else
     aMsg->WriteUInt64(aParam.window);
+#endif
     WriteParam(aMsg, aParam.x);
     WriteParam(aMsg, aParam.y);
     WriteParam(aMsg, aParam.width);
@@ -379,7 +390,7 @@ struct ParamTraits<mozilla::plugins::NPRemoteWindow>
     aMsg->WriteULong(aParam.visualID);
     aMsg->WriteULong(aParam.colormap);
 #endif
-#if defined(XP_WIN)
+#if defined(XP_WIN) || defined(XP_OS2)
     WriteParam(aMsg, aParam.surfaceHandle);
 #endif
 #if defined(XP_MACOSX)
@@ -389,12 +400,21 @@ struct ParamTraits<mozilla::plugins::NPRemoteWindow>
 
   static bool Read(const Message* aMsg, void** aIter, paramType* aResult)
   {
+#if defined(XP_OS2)
+    void* window;
+#else
     uint64_t window;
+#endif
     int32_t x, y;
     uint32_t width, height;
     NPRect clipRect;
     NPWindowType type;
     if (!(aMsg->ReadUInt64(aIter, &window) &&
+#if defined(XP_OS2)
+          ReadParam(aMsg, aIter, &window) &&
+#else
+          aMsg->ReadUInt64(aIter, &window) &&
+#endif
           ReadParam(aMsg, aIter, &x) &&
           ReadParam(aMsg, aIter, &y) &&
           ReadParam(aMsg, aIter, &width) &&
@@ -411,7 +431,7 @@ struct ParamTraits<mozilla::plugins::NPRemoteWindow>
       return false;
 #endif
 
-#if defined(XP_WIN)
+#if defined(XP_WIN) || defined(XP_OS2)
     base::SharedMemoryHandle surfaceHandle;
     if (!ReadParam(aMsg, aIter, &surfaceHandle))
       return false;
@@ -434,7 +454,7 @@ struct ParamTraits<mozilla::plugins::NPRemoteWindow>
     aResult->visualID = visualID;
     aResult->colormap = colormap;
 #endif
-#if defined(XP_WIN)
+#if defined(XP_WIN) || defined(XP_OS2)
     aResult->surfaceHandle = surfaceHandle;
 #endif
 #if defined(XP_MACOSX)
@@ -903,7 +923,7 @@ struct ParamTraits<NPCoordinateSpace>
 #elif defined(XP_WIN)
 #  include "mozilla/plugins/NPEventWindows.h"
 #elif defined(XP_OS2)
-#  error Sorry, OS/2 is not supported
+#  include "mozilla/plugins/NPEventOS2.h"
 #elif defined(ANDROID)
 #  include "mozilla/plugins/NPEventAndroid.h"
 #elif defined(XP_UNIX)

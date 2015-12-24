@@ -16,6 +16,12 @@
 #include "NestedLoopTimer.h"
 #endif
 
+#if defined(XP_OS2)
+#define INCL_DOS
+#define INCL_PM
+#include <os2.h>
+#endif
+
 #include "base/process_util.h"
 
 #include "mozilla/Preferences.h"

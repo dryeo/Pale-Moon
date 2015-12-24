@@ -30,6 +30,10 @@ DIRS += [
     'failures/webapps/XMLHttpRequest/tests/submissions/Ms2ger'
 ]
 
+# make has a bug that causes processing of VPATH to fail with "File name too long" for these
+if CONFIG['OS_ARCH'] != 'OS2':
+    DIRS += ['failures/html/html/browsers/the-window-object/named-access-on-the-window-object']
+
 include('editing.mozbuild')
 include('html.mozbuild')
 include('webapps.mozbuild')
