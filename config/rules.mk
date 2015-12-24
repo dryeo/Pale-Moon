@@ -332,6 +332,24 @@ endif # !GNU_CC
 
 endif # WINNT
 
+DEBUG_SYMFILE =
+DEBUG_SYMFILE_GEN =
+
+ifeq ($(OS_ARCH),OS2)
+ifndef MOZ_DEBUG
+ifdef MOZ_DEBUG_SYMBOLS
+ifneq ($(filter WLINK wlink,$(EMXOMFLD_TYPE)),)
+DEBUG_SYMFILE = $(basename $(1)).dbg
+OS_LDFLAGS += -Zlinker 'option symfile=$(basename $(@)).dbg'
+endif
+endif
+ifndef DEBUG_SYMFILE
+DEBUG_SYMFILE = $(basename $(1)).xqs
+DEBUG_SYMFILE_GEN = mapxqs $(basename $(1)).map -o $(basename $(1)).xqs
+endif
+endif
+endif # OS2
+
 ifeq ($(SOLARIS_SUNPRO_CXX),1)
 ifeq (86,$(findstring 86,$(OS_TEST)))
 OS_LDFLAGS += -M $(topsrcdir)/config/solaris_ia32.map
@@ -379,7 +397,7 @@ ALL_TRASH = \
 	$(OBJS:.$(OBJ_SUFFIX)=.i) $(OBJS:.$(OBJ_SUFFIX)=.i_o) \
 	$(HOST_PROGOBJS) $(HOST_OBJS) $(IMPORT_LIBRARY) $(DEF_FILE)\
 	$(EXE_DEF_FILE) so_locations _gen _stubs $(wildcard *.res) $(wildcard *.RES) \
-	$(wildcard *.pdb) $(CODFILE) $(MAPFILE) $(IMPORT_LIBRARY) \
+	$(wildcard *.pdb) $(wildcard *.cod) $(wildcard *.map) $(IMPORT_LIBRARY) \
 	$(SHARED_LIBRARY:$(DLL_SUFFIX)=.exp) $(wildcard *.ilk) \
 	$(PROGRAM:$(BIN_SUFFIX)=.exp) $(SIMPLE_PROGRAMS:$(BIN_SUFFIX)=.exp) \
 	$(PROGRAM:$(BIN_SUFFIX)=.lib) $(SIMPLE_PROGRAMS:$(BIN_SUFFIX)=.lib) \
@@ -387,6 +405,13 @@ ALL_TRASH = \
 	$(wildcard gts_tmp_*) $(LIBRARY:%.a=.%.timestamp)
 ALL_TRASH_DIRS = \
 	$(GARBAGE_DIRS) /no-such-file
+
+ifeq ($(OS_ARCH),OS2)
+ALL_TRASH += \
+	$(foreach f, \
+		$(PROGRAM) $(SIMPLE_PROGRAMS) $(SHARED_LIBRARY) $(HOST_PROGRAM) $(HOST_SIMPLE_PROGRAMS), \
+		$(basename $f).map $(call DEBUG_SYMFILE,$f))
+endif
 
 ifdef QTDIR
 GARBAGE                 += $(MOCSRCS)
@@ -755,8 +780,10 @@ endif
 include $(topsrcdir)/config/makefiles/target_export.mk
 include $(topsrcdir)/config/makefiles/target_tools.mk
 
+ifneq ($(OS_ARCH),OS2)
 ifneq (,$(filter-out %.$(LIB_SUFFIX),$(SHARED_LIBRARY_LIBS)))
-$(error SHARED_LIBRARY_LIBS must contain .$(LIB_SUFFIX) files only)
+$(error SHARED_LIBRARY_LIBS ($(SHARED_LIBRARY_LIBS)) must contain .$(LIB_SUFFIX) files only)
+endif
 endif
 
 HOST_LIBS_DEPS = $(filter %.$(LIB_SUFFIX),$(HOST_LIBS))
@@ -842,9 +869,6 @@ distclean:: $(SUBMAKEFILES)
 	$(wildcard *.$(OBJ_SUFFIX)) $(wildcard *.ho) $(wildcard host_*.o*) \
 	$(wildcard *.$(LIB_SUFFIX)) $(wildcard *$(DLL_SUFFIX)) \
 	$(wildcard *.$(IMPORT_LIB_SUFFIX))
-ifeq ($(OS_ARCH),OS2)
-	-$(RM) $(PROGRAM:.exe=.map)
-endif
 
 alltags:
 	$(RM) TAGS
@@ -887,6 +911,13 @@ ifdef ENABLE_STRIP
 endif
 ifdef MOZ_POST_PROGRAM_COMMAND
 	$(MOZ_POST_PROGRAM_COMMAND) $@
+endif
+ifdef DEBUG_SYMFILE_GEN
+	$(call DEBUG_SYMFILE_GEN,$@)
+endif
+
+ifdef DEBUG_SYMFILE
+$(call DEBUG_SYMFILE,$(PROGRAM)): $(PROGRAM)
 endif
 
 $(HOST_PROGRAM): $(HOST_PROGOBJS) $(HOST_LIBS_DEPS) $(HOST_EXTRA_DEPS) $(GLOBAL_DEPS)
@@ -942,6 +973,13 @@ endif
 ifdef MOZ_POST_PROGRAM_COMMAND
 	$(MOZ_POST_PROGRAM_COMMAND) $@
 endif
+ifdef DEBUG_SYMFILE_GEN
+	$(call DEBUG_SYMFILE_GEN,$@)
+endif
+
+ifdef DEBUG_SYMFILE
+$(foreach f,$(SIMPLE_PROGRAMS),$(call DEBUG_SYMFILE,$f): $f)
+endif
 
 $(HOST_SIMPLE_PROGRAMS): host_%$(HOST_BIN_SUFFIX): host_%.$(OBJ_SUFFIX) $(HOST_LIBS_DEPS) $(HOST_EXTRA_DEPS) $(GLOBAL_DEPS)
 ifeq (WINNT_,$(HOST_OS_ARCH)_$(GNU_CC))
@@ -981,7 +1019,7 @@ $(IMPORT_LIBRARY): $(SHARED_LIBRARY) ;
 endif
 
 ifeq ($(OS_ARCH),OS2)
-$(DEF_FILE): $(OBJS) $(SHARED_LIBRARY_LIBS)
+$(DEF_FILE): $(OBJS) $(SHARED_LIBRARY_LIBS_DEPS)
 	$(RM) $@
 	echo LIBRARY $(SHARED_LIBRARY_NAME) INITINSTANCE TERMINSTANCE > $@
 	echo PROTMODE >> $@
@@ -1055,6 +1093,13 @@ ifdef ENABLE_STRIP
 endif
 ifdef MOZ_POST_DSO_LIB_COMMAND
 	$(MOZ_POST_DSO_LIB_COMMAND) $@
+endif
+ifdef DEBUG_SYMFILE_GEN
+	$(call DEBUG_SYMFILE_GEN,$@)
+endif
+
+ifdef DEBUG_SYMFILE
+$(call DEBUG_SYMFILE,$(SHARED_LIBRARY)): $(SHARED_LIBRARY)
 endif
 
 ifeq ($(SOLARIS_SUNPRO_CC),1)
@@ -1736,7 +1781,8 @@ endif
 define install_file_template
 $(or $(3),libs):: $(2)/$(notdir $(1))
 $(call install_cmd_override,$(2)/$(notdir $(1)))
-$(2)/$(notdir $(1)): $(1)
+.NOTPARALLEL: $(2)/$(notdir $(1))
+$(2)/$(notdir $(1)): $(1) $(word 1,$(install_cmd))
 	$$(call install_cmd,$(4) "$$<" "$${@D}")
 endef
 $(foreach category,$(INSTALL_TARGETS),\

@@ -153,6 +153,7 @@ else
   XULPPFLAGS += $(MOZ_DEBUG_DISABLE_DEFS)
 endif
 
+ifneq ($(OS_ARCH),OS2)
 ifneq (,$(MOZ_DEBUG)$(MOZ_DEBUG_SYMBOLS))
   ifeq ($(AS),yasm)
     ifeq ($(OS_ARCH)_$(GNU_CC),WINNT_)
@@ -163,10 +164,31 @@ ifneq (,$(MOZ_DEBUG)$(MOZ_DEBUG_SYMBOLS))
       endif
     endif
   else
-    _DEBUG_ASFLAGS += $(MOZ_DEBUG_FLAGS)
+    ifeq ($(OS_ARCH),OS2)
+      _DEBUG_ASFLAGS += -g
+    else
+      _DEBUG_ASFLAGS += $(MOZ_DEBUG_FLAGS)
+    endif
   endif
   _DEBUG_CFLAGS += $(MOZ_DEBUG_FLAGS)
   _DEBUG_LDFLAGS += $(MOZ_DEBUG_LDFLAGS)
+endif
+else
+  # Distinguish between debug and debug-symbols to be able
+  # to e.g have debug-symbols in release builds etc.
+  ifneq (,$(MOZ_DEBUG))
+    _DEBUG_CFLAGS += $(MOZ_DEBUG_FLAGS)
+    _DEBUG_LDFLAGS += $(MOZ_DEBUG_LDFLAGS)
+  endif
+  ifneq (,$(MOZ_DEBUG_SYMBOLS))
+    _DEBUG_ASFLAGS += -g
+    _DEBUG_CFLAGS += -g
+    _DEBUG_LDFLAGS += -g
+  else
+    _DEBUG_ASFLAGS += -s
+    _DEBUG_CFLAGS += -s
+    _DEBUG_LDFLAGS += -s
+  endif
 endif
 
 MOZALLOC_LIB = $(call EXPAND_LIBNAME_PATH,mozalloc,$(DIST)/lib)
@@ -383,11 +405,7 @@ JAVA_GEN_DIR  = _javagen
 JAVA_DIST_DIR = $(DEPTH)/$(JAVA_GEN_DIR)
 JAVA_IFACES_PKG_NAME = org/mozilla/interfaces
 
-OS_INCLUDES += $(MOZ_JPEG_CFLAGS) $(MOZ_PNG_CFLAGS) $(MOZ_ZLIB_CFLAGS) $(MOZ_WEBP_CFLAGS)
-
-ifndef MOZ_TREE_PIXMAN
-OS_INCLUDES += $(shell pkg-config --cflags pixman-1 || true)
-endif
+OS_INCLUDES += $(MOZ_JPEG_CFLAGS) $(MOZ_PNG_CFLAGS) $(MOZ_ZLIB_CFLAGS)
 
 # NSPR_CFLAGS and NSS_CFLAGS must appear ahead of OS_INCLUDES to avoid Linux
 # builds wrongly picking up system NSPR/NSS header files.
@@ -449,6 +467,23 @@ endif # CROSS_COMPILE
 
 CFLAGS += $(MOZ_FRAMEPTR_FLAGS)
 CXXFLAGS += $(MOZ_FRAMEPTR_FLAGS)
+
+# gcc requires -msse2 for this file since it uses SSE2 intrinsics.  (See bug
+# 585538 comment 12.)
+ifneq (,$(INTEL_ARCHITECTURE))
+ifdef GNU_CC
+ifeq ($(OS_ARCH),OS2)
+# On OS/2, GCC is bogus and doesn't align m128i vars on 16 byte boundary
+# (causing a crash). Fix it by forcing stack realign.
+SSE2_FLAGS = -msse2 -mstackrealign
+else
+SSE2_FLAGS = -msse2
+endif
+endif
+ifdef SOLARIS_SUNPRO_CXX
+SSE2_FLAGS = -xarch=sse2 -xO4
+endif
+endif
 
 # Check for FAIL_ON_WARNINGS & FAIL_ON_WARNINGS_DEBUG (Shorthand for Makefiles
 # to request that we use the 'warnings as errors' compile flags)
@@ -646,15 +681,11 @@ NSINSTALL_NATIVECMD := %nsinstall nsinstall
 ifdef NSINSTALL_BIN
 NSINSTALL = $(NSINSTALL_BIN)
 else
-ifeq (OS2,$(CROSS_COMPILE)$(OS_ARCH))
-NSINSTALL = $(MOZ_TOOLS_DIR)/nsinstall
-else
 ifeq ($(HOST_OS_ARCH),WINNT)
 NSINSTALL = $(NSINSTALL_PY)
 else
 NSINSTALL = $(CONFIG_TOOLS)/nsinstall$(HOST_BIN_SUFFIX)
 endif # WINNT
-endif # OS2
 endif # NSINSTALL_BIN
 
 
