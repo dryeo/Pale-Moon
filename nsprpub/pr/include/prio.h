@@ -144,7 +144,12 @@ typedef struct PRIPv6Addr PRIPv6Addr;
 
 union PRNetAddr {
     struct {
+#if defined(XP_OS2) && !defined(TCPV40HDRS)
+        PRUint8 len;
+        PRUint8 family;
+#else
         PRUint16 family;                /* address family (0x00ff maskable) */
+#endif
 #ifdef XP_BEOS
         char data[10];                  /* Be has a smaller structure */
 #else
@@ -152,7 +157,12 @@ union PRNetAddr {
 #endif
     } raw;
     struct {
+#if defined(XP_OS2) && !defined(TCPV40HDRS)
+        PRUint8 len;
+        PRUint8 family;
+#else    
         PRUint16 family;                /* address family (AF_INET) */
+#endif
         PRUint16 port;                  /* port number */
         PRUint32 ip;                    /* The actual 32 bits of address */
 #ifdef XP_BEOS
@@ -162,7 +172,12 @@ union PRNetAddr {
 #endif
     } inet;
     struct {
+#if defined(XP_OS2) && !defined(TCPV40HDRS)
+        PRUint8 len;
+        PRUint8 family;
+#else
         PRUint16 family;                /* address family (AF_INET6) */
+#endif
         PRUint16 port;                  /* port number */
         PRUint32 flowinfo;              /* routing information */
         PRIPv6Addr ip;                  /* the actual 128 bits of address */
@@ -170,7 +185,12 @@ union PRNetAddr {
     } ipv6;
 #if defined(XP_UNIX) || defined(XP_OS2)
     struct {                            /* Unix domain socket address */
+#if defined(XP_OS2) && !defined(TCPV40HDRS)
+        PRUint8 len;
+        PRUint8 family;
+#else
         PRUint16 family;                /* address family (AF_UNIX) */
+#endif
 #ifdef XP_OS2
         char path[108];                 /* null-terminated pathname */
                                         /* bind fails if size is not 108. */
@@ -211,8 +231,6 @@ typedef enum PRSockOption
     PR_SockOpt_NoDelay,         /* don't delay send to coalesce packets */
     PR_SockOpt_MaxSegment,      /* maximum segment size */
     PR_SockOpt_Broadcast,       /* enable broadcast */
-    PR_SockOpt_Reuseport,       /* allow local address & port reuse on
-                                 * platforms that support it */
     PR_SockOpt_Last
 } PRSockOption;
 
@@ -236,8 +254,6 @@ typedef struct PRSocketOptionData
         PRUintn tos;                /* IP type of service and precedence */
         PRBool non_blocking;        /* Non-blocking (network) I/O */
         PRBool reuse_addr;          /* Allow local address reuse */
-        PRBool reuse_port;          /* Allow local address & port reuse on
-                                     * platforms that support it */
         PRBool keep_alive;          /* Keep connections alive */
         PRBool mcast_loopback;      /* IP multicast loopback */
         PRBool no_delay;            /* Don't delay send to coalesce packets */
@@ -1857,19 +1873,6 @@ NSPR_API(void *) PR_MemMap(
 NSPR_API(PRStatus) PR_MemUnmap(void *addr, PRUint32 len);
 
 NSPR_API(PRStatus) PR_CloseFileMap(PRFileMap *fmap);
-
-/*
- * Synchronously flush the given memory-mapped address range of the given open
- * file to disk. The function does not return until all modified data have
- * been written to disk.
- *
- * On some platforms, the function will call PR_Sync(fd) internally if it is
- * necessary for flushing modified data to disk synchronously.
- */
-NSPR_API(PRStatus) PR_SyncMemMap(
-    PRFileDesc *fd,
-    void *addr,
-    PRUint32 len);
 
 /*
  ******************************************************************

@@ -140,6 +140,10 @@ export:: $(TARGETS) $(HEADERS)
 	$(INSTALL) -m 444 $(TARGETS) $(dist_libdir)
 ifeq ($(OS_ARCH),OS2)
 	$(INSTALL) -m 444 $(TARGETS) $(dist_bindir)
+ifdef DEBUG_SYMFILE
+	$(INSTALL) -m 444 $(call DEBUG_SYMFILE,$(SHARED_LIBRARY)) $(dist_libdir)
+	$(INSTALL) -m 444 $(call DEBUG_SYMFILE,$(SHARED_LIBRARY)) $(dist_bindir)
+endif
 endif
 ifeq ($(OS_ARCH),HP-UX)
 ifdef SHARED_LIBRARY

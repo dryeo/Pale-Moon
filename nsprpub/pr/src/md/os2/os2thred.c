@@ -3,6 +3,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+// exceptq trap file generator
+#include <string.h>
+#define INCL_BASE
+#include <os2.h>
+#define INCL_LIBLOADEXCEPTQ
+#include <exceptq.h>
+
 #include "primpl.h"
 #include <process.h>  /* for _beginthread() */
 #include <signal.h>
@@ -156,16 +163,24 @@ typedef struct param_store
 static void
 ExcpStartFunc(void* arg)
 {
-    EXCEPTIONREGISTRATIONRECORD excpreg;
+    // For arrays it's guaranteed that &[0] < &[1] which we use to make sure that the registration
+    // record of the top (last) exception handler has a smaller address (i.e. located lower on the
+    // stack) — this is a requirement of the SEH logic.
+    EXCEPTIONREGISTRATIONRECORD excpreg[2];
+
     PARAMSTORE params, *pParams = arg;
 
-    PR_OS2_SetFloatExcpHandler(&excpreg);
+    LibLoadExceptq(&excpreg[1]);
+
+    PR_OS2_SetFloatExcpHandler(&excpreg[0]);
 
     params = *pParams;
     PR_Free(pParams);
     params.start(params.thread);
 
-    PR_OS2_UnsetFloatExcpHandler(&excpreg);
+    PR_OS2_UnsetFloatExcpHandler(&excpreg[0]);
+
+    UninstallExceptq(&excpreg[1]);
 }
 
 PRStatus
@@ -238,6 +253,11 @@ _PR_MD_SET_PRIORITY(_MDThread *thread, PRThreadPriority newPri)
 }
 
 void
+_PR_MD_SET_CURRENT_THREAD_NAME(const char *name)
+{
+}
+
+void
 _PR_MD_CLEAN_THREAD(PRThread *thread)
 {
     APIRET rv;
@@ -272,7 +292,7 @@ PR_EXTERN(PRInt32)
 _PR_MD_SETTHREADAFFINITYMASK(PRThread *thread, PRUint32 mask )
 {
    /* Can we do this on OS/2?  Only on SMP versions? */
-   PR_NOT_REACHED("Not implemented");
+   PR_NOT_REACHED(!"Not implemented");
    return 0;
 
  /* This is what windows does:
@@ -288,7 +308,7 @@ PR_EXTERN(PRInt32)
 _PR_MD_GETTHREADAFFINITYMASK(PRThread *thread, PRUint32 *mask)
 {
    /* Can we do this on OS/2?  Only on SMP versions? */
-   PR_NOT_REACHED("Not implemented");
+   PR_NOT_REACHED(!"Not implemented");
    return 0;
 
  /* This is what windows does:
