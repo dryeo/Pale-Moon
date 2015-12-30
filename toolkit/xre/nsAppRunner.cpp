@@ -3,9 +3,16 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#if defined(XP_OS2) && defined(MOZ_OS2_HIGH_MEMORY)
-// os2safe.h has to be included before os2.h, needed for high mem
-#include <os2safe.h>
+#if defined(XP_OS2)
+#if defined(MOZ_OS2_HIGH_MEMORY)
+ // os2safe.h has to be included before os2.h, needed for high mem
+ #include <os2safe.h>
+ #endif
+// exceptq trap file generator
+#define INCL_BASE
+#include <os2.h>
+#define INCL_LOADEXCEPTQ
+#include <exceptq.h>
 #endif
 
 #define XPCOM_TRANSLATE_NSGM_ENTRY_POINT 1
@@ -2343,14 +2350,30 @@ static void RestoreStateForAppInitiatedRestart()
 const nsXREAppData* gAppData = nullptr;
 
 #if defined(XP_OS2)
-// because we use early returns, we use a stack-based helper to un-set the OS2 FP handler
-class ScopedFPHandler {
-private:
-  EXCEPTIONREGISTRATIONRECORD excpreg;
+// Because we use early returns, we use a stack-based helper to set and un-set the OS2 FPU exception
+// handler. This helper also installs the EXCEPTQ handler on the current thread to make sure it
+// is chained so that it gets control after the FPU exception handler. This can't be done with
+// ScopedExceptqLoader since the proper stack order for locals is not guaranteed by the compiler.
+ class ScopedFPHandler {
+ private:
+  // For arrays it's guaranteed that &[0] < &[1] which we use to make sure that the registration
+  // record of the top (last) exception handler has a smaller address (i.e. located lower on the
+  // stack) — this is a requirement of the SEH logic.
+  EXCEPTIONREGISTRATIONRECORD excpreg[2];
+ 
+ public:
 
-public:
-  ScopedFPHandler() { PR_OS2_SetFloatExcpHandler(&excpreg); }
-  ~ScopedFPHandler() { PR_OS2_UnsetFloatExcpHandler(&excpreg); }
+  ScopedFPHandler() {
+    LoadExceptq(&excpreg[1], NULL, NULL);
+    PR_OS2_SetFloatExcpHandler(&excpreg[0]);
+  }
+  ~ScopedFPHandler() {
+    PR_OS2_UnsetFloatExcpHandler(&excpreg[0]);
+    UninstallExceptq(&excpreg[1]);
+  }
+ };
+ #endif
+
 };
 #endif
 
@@ -2797,7 +2820,6 @@ XREMain::XRE_mainInit(bool* aExitFlag)
   bool StartOS2App(int aArgc, char **aArgv);
   if (!StartOS2App(gArgc, gArgv))
     return 1;
-  ScopedFPHandler handler;
 #endif /* XP_OS2 */
 
   if (EnvHasValue("MOZ_SAFE_MODE_RESTART")) {
@@ -3565,6 +3587,10 @@ void XRE_GlibInit()
 int
 XREMain::XRE_main(int argc, char* argv[], const nsXREAppData* aAppData)
 {
+#if defined(XP_OS2)
+  ScopedFPHandler fpHandler;
+#endif
+
   char aLocal;
   GoannaProfilerInitRAII profilerGuard(&aLocal);
   PROFILER_LABEL("Startup", "XRE_Main");
