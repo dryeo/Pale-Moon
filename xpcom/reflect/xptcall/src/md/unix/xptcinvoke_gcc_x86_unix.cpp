@@ -47,16 +47,37 @@ invoke_copy_to_stack(uint32_t paramCount, nsXPTCVariant* s, uint32_t* d)
 
 */
 
+/*
+ * Hack for gcc for os2. Functions used externally must be explicitly dllexported.
+ * Bug 226609
+ */
+#if defined(XP_OS2)
+extern "C" {
+    nsresult _NS_InvokeByIndex(nsISupports* that, uint32_t methodIndex,
+                               uint32_t paramCount, nsXPTCVariant* params);
+    EXPORT_XPCOM_API(nsresult)
+    NS_InvokeByIndex(nsISupports* that, uint32_t methodIndex,
+                     uint32_t paramCount, nsXPTCVariant* params) { 
+        return _NS_InvokeByIndex(that, methodIndex, paramCount, params);
+    }
+}
+#endif
+
 __asm__ (
 	".text\n\t"
 /* alignment here seems unimportant here; this was 16, now it's 2 which
    is what xptcstubs uses. */
 	".align 2\n\t"
+#if defined(XP_OS2)
+	".globl " SYMBOL_UNDERSCORE "_NS_InvokeByIndex\n\t"
+	SYMBOL_UNDERSCORE "_NS_InvokeByIndex:\n\t"
+#else
 	".globl " SYMBOL_UNDERSCORE "NS_InvokeByIndex\n\t"
-#ifndef XP_MACOSX
+#if !defined(XP_MACOSX) && !defined(XP_OS2)
 	".type  " SYMBOL_UNDERSCORE "NS_InvokeByIndex,@function\n"
 #endif
 	SYMBOL_UNDERSCORE "NS_InvokeByIndex:\n\t"
+#endif
 	"pushl %ebp\n\t"
 	"movl  %esp, %ebp\n\t"
 	"movl  0x10(%ebp), %eax\n\t"

@@ -13,6 +13,9 @@
 #elif defined(XP_UNIX)
 #include <sys/stat.h>
 #include <string.h>
+#elif defined (XP_OS2)
+#define INCL_DOS
+#include <os2.h>
 #endif
 
 namespace mozilla {
@@ -125,8 +128,10 @@ private:
   {
     PPIB ppib;
     PTIB ptib;
-    DosGetInfoBlocks( &ptib, &ppib);
-    DosQueryModuleName(ppib->pib_hmte, MAXPATHLEN, aResult);
+    if ((DosGetInfoBlocks( &ptib, &ppib) == 0) &&
+      (DosQueryModuleName(ppib->pib_hmte, MAXPATHLEN, aResult) == 0))
+      return NS_OK;
+    return NS_ERROR_FAILURE;
   }
 
 #else

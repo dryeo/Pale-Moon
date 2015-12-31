@@ -3,17 +3,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* Special include file for xptc*_gcc_x86_unix.cpp */
+/* Platform specific code to invoke XPCOM methods on native objects */
 
-// 
-// this may improve the static function calls, but may not.
-//
-
-#ifdef MOZ_NEED_LEADING_UNDERSCORE
-#define SYMBOL_UNDERSCORE "_"
-#else
-#define SYMBOL_UNDERSCORE
-#endif
-
-
-#define ATTRIBUTE_USED __attribute__ ((__used__))
+#include "../unix/xptcinvoke_gcc_x86_unix.cpp"
