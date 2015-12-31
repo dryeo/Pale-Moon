@@ -498,7 +498,9 @@ NS_IMETHODIMP nsXULWindow::Destroy()
   }
   if (mWindow) {
     mWindow->SetWidgetListener(nullptr); // nsWebShellWindow hackery
+#if !defined(XP_OS2) // OS/2 crashes in PMMERGE.DLL when closing a sent mail window
     mWindow->Destroy();
+#endif
     mWindow = nullptr;
   }
 
