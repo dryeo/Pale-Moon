@@ -6,6 +6,8 @@
 %include "vpx_config_x86-darwin9-gcc.asm"
 %elifidn __OUTPUT_FORMAT__,macho64
 %include "vpx_config_x86_64-darwin9-gcc.asm"
+%elifidn __OUTPUT_FORMAT__,obj
+%include "vpx_config_x86-os2-gcc.asm"
 %elifidn __OUTPUT_FORMAT__,win32
 %include "vpx_config_x86-win32-vs12.asm"
 %elifidn __OUTPUT_FORMAT__,x64

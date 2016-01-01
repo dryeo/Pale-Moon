@@ -32,6 +32,10 @@
 /* 64 bit ELF platforms. */
 #include "vpx_config_x86_64-linux-gcc.h"
 
+#elif defined(__OS2__)
+/* OS/2 */
+#include "vpx_config_x86-os2-gcc.h"
+
 #else
 #error VPX_X86_ASM is defined, but assembly not supported on this platform!
 #endif

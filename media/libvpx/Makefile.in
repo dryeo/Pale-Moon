@@ -249,6 +249,13 @@ CSRCS += \
   vpx_scale_rtcd.c \
   $(NULL)
 
+ifeq ($(OS_ARCH),OS2)
+DEFINES += -DTYPE_BOOL
+CSRCS += \
+  os2_semaphore.c \
+  $(NULL)
+endif
+
 ifdef MOZ_VPX_ERROR_CONCEALMENT
 CSRCS += \
   error_concealment.c \
