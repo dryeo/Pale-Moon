@@ -1734,6 +1734,7 @@ case "$host" in
     HOST_NSPR_MDCPUCFG='\"md/_os2.cfg\"'
     HOST_OPTIMIZE_FLAGS="${HOST_OPTIMIZE_FLAGS=-O2}"
     HOST_BIN_SUFFIX=.exe
+    HOST_AR=emxomfar
     MOZ_FIX_LINK_PATHS=
     ;;
 
@@ -2258,7 +2259,6 @@ ia64*-hpux*)
     AC_DEFINE(OS2)
     AC_DEFINE(XP_OS2)
     AC_DEFINE(OS2EMX_PLAIN_CHAR)
-    AC_DEFINE(TCPV40HDRS)
     DLL_PREFIX=
     LIB_PREFIX=
     LIB_SUFFIX=lib
@@ -2268,17 +2268,22 @@ ia64*-hpux*)
     DSO_PIC_CFLAGS=
     AR=emxomfar
     AR_FLAGS='r $@'
+    AS_DASH_C_FLAG=''
     CFLAGS="$CFLAGS -Zomf"
     CXXFLAGS="$CXXFLAGS -Zomf"
     DSO_LDOPTS='-Zdll'
     BIN_FLAGS='-Zlinker /ST:0x100000'
     IMPLIB='emximp -o'
     FILTER='true'
-    LDFLAGS='-Zmap'
+    LDFLAGS="-Zomf -Zmap"
     WARNINGS_AS_ERRORS='-Werror'
-    MOZ_DEBUG_FLAGS="-g -fno-inline"
+    MOZ_DEBUG_FLAGS="-fno-inline"
     MOZ_OPTIMIZE_FLAGS="-O2"
-    MOZ_OPTIMIZE_LDFLAGS="-s -Zlinker /EXEPACK:2 -Zlinker /PACKCODE -Zlinker /PACKDATA"
+    if test "$EMXOMFLD_TYPE" = "WLINK" -o "$EMXOMFLD_TYPE" = "wlink"; then
+        MOZ_OPTIMIZE_LDFLAGS=
+    else
+        MOZ_OPTIMIZE_LDFLAGS="-Zlinker /EXEPACK:2 -Zlinker /PACKCODE -Zlinker /PACKDATA"
+    fi
     DYNAMIC_XPCOM_LIBS='-L$(LIBXUL_DIST)/lib $(LIBXUL_DIST)/lib/xul.lib $(LIBXUL_DIST)/lib/xpcom_core.lib $(LIBXUL_DIST)/lib/mozalloc.lib'
     LIBXUL_LIBS='-L$(LIBXUL_DIST)/lib $(LIBXUL_DIST)/lib/xul.lib $(LIBXUL_DIST)/lib/mozalloc.lib'
     TARGET_MD_ARCH=os2
@@ -2291,11 +2296,6 @@ ia64*-hpux*)
     STRIP=lxlite
     STRIP_FLAGS="/yua /ydd /yxd /ynl /anp /b- /cs+ /d /i- /ml1 /mr2 /mf2 /r+ /u+ /x- /zs:0 /zx /zd"
 
-    if test "$MOZTOOLS"; then
-        MOZ_TOOLS_DIR=`echo $MOZTOOLS | sed -e 's|\\\\|/|g'`
-    else
-        AC_MSG_ERROR([MOZTOOLS is not set])
-    fi
     if test -n "$MOZ_OS2_HIGH_MEMORY"; then
         DSO_LDOPTS="$DSO_LDOPTS -Zhigh-mem"
         LDFLAGS="$LDFLAGS -Zhigh-mem"
@@ -5591,6 +5591,10 @@ if test -n "$MOZ_VPX" -a -z "$MOZ_NATIVE_LIBVPX"; then
       VPX_ASFLAGS="-f macho64 -rnasm -pnasm -DPIC"
       VPX_X86_ASM=1
     ;;
+    OS2:x86)
+      VPX_ASFLAGS="-f obj"
+      VPX_X86_ASM=1
+    ;;
     WINNT:x86_64)
       VPX_ASFLAGS="-f x64 -rnasm -pnasm"
       VPX_X86_ASM=1
@@ -6045,6 +6049,10 @@ if test -n "$MOZ_LIBJPEG_TURBO"; then
     LIBJPEG_TURBO_ASFLAGS="-f win64 -rnasm -pnasm -D__x86_64__ -DPIC -DWIN64 -DMSVC"
     LIBJPEG_TURBO_X64_ASM=1
   ;;
+  OS2:i?86)
+    LIBJPEG_TURBO_ASFLAGS="-f obj -DOBJ32 -D__OS2__"
+    LIBJPEG_TURBO_X86_ASM=1
+  ;;
   *:arm*)
     LIBJPEG_TURBO_ASFLAGS="-march=armv7-a -mfpu=neon"
     LIBJPEG_TURBO_ARM_ASM=1
@@ -6081,11 +6089,12 @@ if test -n "$LIBJPEG_TURBO_X86_ASM" -o -n "$LIBJPEG_TURBO_X64_ASM" ; then
         if test "$_YASM_MAJOR_VERSION" -lt "1" -o \( "$_YASM_MAJOR_VERSION" -eq "1" -a "$_YASM_MINOR_VERSION" -eq "0" -a "$_YASM_RELEASE" -lt "1" \) ; then
             AC_MSG_ERROR([Yasm 1.0.1 or greater is required to build with libjpeg-turbo's optimized JPEG decoding routines, but you appear to have version $_YASM_MAJOR_VERSION.$_YASM_MINOR_VERSION.$_YASM_RELEASE.  Upgrade to the newest version or configure with --disable-libjpeg-turbo to use the pure C JPEG decoder.  See https://developer.mozilla.org/en/YASM for more details.])
         fi
-    else
+    elif test "$OS_ARCH" != "OS2"; then
         if test "$_YASM_MAJOR_VERSION" -lt "1" -o \( "$_YASM_MAJOR_VERSION" -eq "1" -a "$_YASM_MINOR_VERSION" -lt "1" \) ; then
             AC_MSG_ERROR([Yasm 1.1 or greater is required to build with libjpeg-turbo's optimized JPEG decoding routines, but you appear to have version $_YASM_MAJOR_VERSION.$_YASM_MINOR_VERSION.  Upgrade to the newest version or configure with --disable-libjpeg-turbo to use the pure C JPEG decoder.  See https://developer.mozilla.org/en/YASM for more details.])
         fi
     fi
+
 fi
 
 dnl If we're on an ARM system which supports libjpeg-turbo's asm routines and
@@ -6943,7 +6952,7 @@ MOZ_ARG_ENABLE_STRING(debug-symbols,
   fi ],
   MOZ_DEBUG_SYMBOLS=1)
 
-if test -n "$MOZ_DEBUG" -o -n "$MOZ_DEBUG_SYMBOLS"; then
+if test \( -n "$MOZ_DEBUG" -a "$OS_ARCH" != "OS2" \) -o -n "$MOZ_DEBUG_SYMBOLS"; then
     AC_DEFINE(MOZ_DEBUG_SYMBOLS)
     export MOZ_DEBUG_SYMBOLS
 fi
@@ -8176,10 +8185,11 @@ if test "$MOZ_TREE_CAIRO"; then
         ;;
       os2)
         OS2_SURFACE_FEATURE="#define CAIRO_HAS_OS2_SURFACE 1"
+        PS_SURFACE_FEATURE="#define CAIRO_HAS_PS_SURFACE 1"
         FT_FONT_FEATURE="#define CAIRO_HAS_FT_FONT 1"
         MOZ_ENABLE_CAIRO_FT=1
-        CAIRO_FT_CFLAGS="-I${MZFTCFGFT2}/include"
-        CAIRO_FT_OSLIBS="-L${MZFTCFGFT2}/lib -lmozft -lmzfntcfg"
+        CAIRO_FT_CFLAGS="$FT2_CFLAGS $_FONTCONFIG_CFLAGS"
+        CAIRO_FT_OSLIBS="$FT2_LIBS $_FONTCONFIG_LIBS"
         CAIRO_FT_LIBS=""
         ;;
     esac
