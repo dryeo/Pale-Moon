@@ -40,6 +40,12 @@
 #include <unix.h>
 #endif
 
+#if defined(__OS2__)
+#define OPEN_FLAGS O_BINARY
+#else
+#define OPEN_FLAGS 0
+#endif
+
 #ifdef NEED_S_ISLNK
 #if !defined(S_ISLNK) && defined(S_IFLNK)
 #define S_ISLNK(a)	(((a) & S_IFMT) == S_IFLNK)
@@ -88,7 +94,7 @@ mkdirs(char *path, mode_t mode)
 	}
 	*cp = '/';
     }
-    
+
     res = mkdir(path, mode);
     if ((res != 0) && (errno == EEXIST))
       return 0;
@@ -139,20 +145,20 @@ copyfile( char *name, char *toname, mode_t mode, char *group, char *owner,
 
   exists = (lstat(toname, &tosb) == 0);
 
-  fromfd = open(name, O_RDONLY);
+  fromfd = open(name, O_RDONLY | OPEN_FLAGS);
   if (fromfd < 0 || fstat(fromfd, &sb) < 0)
     fail("cannot access %s", name);
   if (exists) {
     if (S_ISREG(tosb.st_mode)) {
       /* See if we can open it. This is more reliable than 'access'. */
-      tofd = open(toname, O_CREAT | O_WRONLY, 0666);
+      tofd = open(toname, O_CREAT | O_WRONLY | OPEN_FLAGS, 0666);
     }
     if (tofd < 0) {
       (void) (S_ISDIR(tosb.st_mode) ? rmdir : unlink)(toname);
     }
   }
   if (tofd < 0) {
-    tofd = open(toname, O_CREAT | O_WRONLY, 0666);
+    tofd = open(toname, O_CREAT | O_WRONLY | OPEN_FLAGS, 0666);
     if (tofd < 0)
       fail("cannot create %s", toname);
   }
@@ -174,7 +180,7 @@ copyfile( char *name, char *toname, mode_t mode, char *group, char *owner,
 
   if (ftruncate(tofd, sb.st_size) < 0)
     fail("cannot truncate %s", toname);
-#if !defined(VMS)
+#if !defined(VMS) && !defined(__OS2__)
   if (dotimes)
   {
     utb.actime = sb.st_atime;
@@ -196,7 +202,7 @@ copyfile( char *name, char *toname, mode_t mode, char *group, char *owner,
   if (close(tofd) < 0)
     fail("cannot write to %s", toname);
   close(fromfd);
-#if defined(VMS)
+#if defined(VMS) || defined(__OS2__)
   if (chmod(toname, (mode & (S_IREAD | S_IWRITE))) < 0)
     fail("cannot change mode of %s", toname);
   if (dotimes)
@@ -285,6 +291,12 @@ main(int argc, char **argv)
 	  case 'd':
 	    dodir = 1;
 	    break;
+#if defined(__OS2__)
+    /* no proper symlink support so far */
+	  case 'L':
+	  case 'R':
+	    break;
+#else
 	  case 'L':
 	    linkprefix = optarg;
 	    lplen = strlen(linkprefix);
@@ -293,6 +305,7 @@ main(int argc, char **argv)
 	  case 'R':
 	    dolink = dorelsymlink = 1;
 	    break;
+#endif
 	  case 'm':
 	    mode = strtoul(optarg, &cp, 8);
 	    if (mode == 0 && cp == optarg)
@@ -412,8 +425,8 @@ main(int argc, char **argv)
 	    /* Check for a pre-existing symlink with identical content. */
 	    if ((exists && (!S_ISLNK(tosb.st_mode) ||
 						readlink(toname, buf, sizeof buf) != len ||
-						strncmp(buf, name, (unsigned int)len) != 0)) || 
-			((stat(name, &fromsb) == 0) && 
+						strncmp(buf, name, (unsigned int)len) != 0)) ||
+			((stat(name, &fromsb) == 0) &&
 			 (fromsb.st_mtime > tosb.st_mtime))) {
 		(void) (S_ISDIR(tosb.st_mode) ? rmdir : unlink)(toname);
 		exists = 0;
@@ -436,7 +449,7 @@ main(int argc, char **argv)
         /* then is directory: must explicitly create destination dir  */
         /*  and manually copy files over                              */
         copydir( name, todir, mode, group, owner, dotimes, uid, gid );
-      } 
+      }
       else
       {
         copyfile(name, toname, mode, group, owner, dotimes, uid, gid);
