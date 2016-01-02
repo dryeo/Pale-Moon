@@ -378,6 +378,7 @@ ifdef DEBUG_SYMFILE
 NSS_DIST_DLL_FILES += $(foreach f,$(NSS_DIST_DLL_FILES),$(call DEBUG_SYMFILE,$f))
 endif
 NSS_DIST_DLL_DEST := $(DIST)/bin
+NSS_DIST_DLL_TARGET := target
 INSTALL_TARGETS += NSS_DIST_DLL
 
 ifeq ($(OS_ARCH)_$(1), SunOS_softokn3)
