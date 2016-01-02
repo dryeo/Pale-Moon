@@ -180,7 +180,7 @@ copyfile( char *name, char *toname, mode_t mode, char *group, char *owner,
 
   if (ftruncate(tofd, sb.st_size) < 0)
     fail("cannot truncate %s", toname);
-#if !defined(VMS) || defined(__OS2__)
+#if !defined(VMS) && !defined(__OS2__)
   if (dotimes)
   {
     utb.actime = sb.st_atime;
@@ -292,10 +292,10 @@ main(int argc, char **argv)
 	    dodir = 1;
 	    break;
 #if defined(__OS2__)
-           /* no proper symlink support so far */
-           case 'L':
-           case 'R':
-             break;
+    /* no proper symlink support so far */
+	  case 'L':
+	  case 'R':
+	    break;
 #else
 	  case 'L':
 	    linkprefix = optarg;
@@ -426,7 +426,7 @@ main(int argc, char **argv)
 	    if ((exists && (!S_ISLNK(tosb.st_mode) ||
 						readlink(toname, buf, sizeof buf) != len ||
 						strncmp(buf, name, (unsigned int)len) != 0)) ||
-			((stat(name, &fromsb) == 0) && 
+			((stat(name, &fromsb) == 0) &&
 			 (fromsb.st_mtime > tosb.st_mtime))) {
 		(void) (S_ISDIR(tosb.st_mode) ? rmdir : unlink)(toname);
 		exists = 0;
