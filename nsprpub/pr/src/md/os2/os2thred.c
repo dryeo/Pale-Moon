@@ -6,6 +6,7 @@
 // exceptq trap file generator
 #include <string.h>
 #define INCL_BASE
+#define INCL_PM
 #include <os2.h>
 #define INCL_LIBLOADEXCEPTQ
 #include <exceptq.h>
@@ -292,7 +293,7 @@ PR_EXTERN(PRInt32)
 _PR_MD_SETTHREADAFFINITYMASK(PRThread *thread, PRUint32 mask )
 {
    /* Can we do this on OS/2?  Only on SMP versions? */
-   PR_NOT_REACHED(!"Not implemented");
+   PR_NOT_REACHED("Not implemented");
    return 0;
 
  /* This is what windows does:
@@ -308,7 +309,7 @@ PR_EXTERN(PRInt32)
 _PR_MD_GETTHREADAFFINITYMASK(PRThread *thread, PRUint32 *mask)
 {
    /* Can we do this on OS/2?  Only on SMP versions? */
-   PR_NOT_REACHED(!"Not implemented");
+   PR_NOT_REACHED("Not implemented");
    return 0;
 
  /* This is what windows does:

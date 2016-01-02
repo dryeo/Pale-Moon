@@ -231,6 +231,8 @@ typedef enum PRSockOption
     PR_SockOpt_NoDelay,         /* don't delay send to coalesce packets */
     PR_SockOpt_MaxSegment,      /* maximum segment size */
     PR_SockOpt_Broadcast,       /* enable broadcast */
+    PR_SockOpt_Reuseport,       /* allow local address & port reuse on
+                                 * platforms that support it */
     PR_SockOpt_Last
 } PRSockOption;
 
