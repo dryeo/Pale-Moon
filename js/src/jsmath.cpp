@@ -13,6 +13,10 @@
 #define _CRT_RAND_S
 #endif
 
+#if defined(XP_OS2) && defined(__GNUC__)
+# define _GNU_SOURCE // for log2
+#endif
+
 #include "jsmath.h"
 
 #include "jslibmath.h"
@@ -645,6 +649,7 @@ random_generateSeed()
 {
     union {
         uint8_t     u8[8];
+        uint16_t    u16[4];
         uint32_t    u32[2];
         uint64_t    u64;
     } seed;
@@ -659,7 +664,8 @@ random_generateSeed()
 #elif defined(XP_OS2) && defined(__KLIBC__)
     /* based on a snippet from kLIBC's lib/sys/fs.c */
     __asm__ __volatile__ ("rdtsc" : "=A" (seed.u64));
-    seed.u32[0] = nrand48(seed.u16);
+    seed.u64 = ((uint64_t)nrand48(seed.u16) << 32) |
+               ((uint64_t)nrand48(seed.u16) & 0xFFFFFFFF);
 #elif defined(XP_UNIX)
     /*
      * In the unlikely event we can't read /dev/urandom, there's not much we can
