@@ -23,6 +23,7 @@ ID
 /config.log
 /.clang_complete
 /mach.ini
+/mozenv.cmd
 
 # Empty marker file that's generated when we check out NSS
 security/manager/.nss.checkout
@@ -38,9 +39,15 @@ security/manager/.nss.checkout
 # SpiderMonkey configury
 js/src/configure
 js/src/autom4te.cache
+js/src/ctypes/libffi/configure
+js/src/ctypes/libfii/autom4te.cache
 # SpiderMonkey test result logs
 js/src/tests/results-*.html
 js/src/tests/results-*.txt
+
+#nsprpub configury
+nsprpub/configure
+nsprpub/autom4te.cache
 
 # Java HTML5 parser classes
 parser/html/java/htmlparser/
@@ -64,4 +71,4 @@ toolkit/devtools/chrome.manifest
 other-licenses/7zstub/firefox/7zSD - Copy.sfx.exe
 
 # Ignore official beta branding
-browser/branding/officialbeta/
+browser/branding/officialbeta/autom4te.cache
