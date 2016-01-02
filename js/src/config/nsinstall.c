@@ -291,7 +291,7 @@ main(int argc, char **argv)
 	  case 'd':
 	    dodir = 1;
 	    break;
-+#if defined(__OS2__)
+#if defined(__OS2__)
            /* no proper symlink support so far */
            case 'L':
            case 'R':
