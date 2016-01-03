@@ -88,8 +88,8 @@ CloseLibHandle(LibHandleType aLibHandle)
 }
 
 #elif defined(XP_OS2)
-#define INCL_DOS
-#define INCL_DOSERRORS
+#define INCL_BASE
+#define INCL_PM
 #include <os2.h>
 
 typedef HMODULE LibHandleType;
@@ -101,14 +101,14 @@ GetLibHandle(pathstr_t aDependentLib)
     ULONG ulrc = NO_ERROR;
     LibHandleType libHandle;
     ulrc = DosLoadModule(pszError, _MAX_PATH, aDependentLib, &libHandle);
-    return (ulrc == NO_ERROR) ? libHandle : nullptr;
+    return (ulrc == NO_ERROR) ? libHandle : NULLHANDLE;
 }
 
 static NSFuncPtr
 GetSymbol(LibHandleType aLibHandle, const char *aSymbol)
 {
     ULONG ulrc = NO_ERROR;
-    GetFrozenFunctionsFunc sym;
+    NSFuncPtr sym;
     ulrc = DosQueryProcAddr(aLibHandle, 0, aSymbol, (PFN*)&sym);
     return (ulrc == NO_ERROR) ? sym : nullptr;
 }
