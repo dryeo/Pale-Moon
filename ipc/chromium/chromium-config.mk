@@ -46,6 +46,17 @@ DEFINES += -DCOMPILER_MSVC
 endif
 
 else # } {
+ifeq ($(OS_ARCH),OS2) # {
+
+OS_POSIX = 1
+OS_OS2 = 1
+
+DEFINES += \
+  -DOS_POSIX=1 \
+  -DOS_OS2=1 \
+  $(NULL)
+
+else # } {
 OS_POSIX = 1
 DEFINES += -DOS_POSIX=1
 
@@ -109,6 +120,7 @@ DEFINES += \
   -DOS_LINUX=1 \
   $(NULL)
 
+endif # }
 endif # }
 endif # }
 endif # }

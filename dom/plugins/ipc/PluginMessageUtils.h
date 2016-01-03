@@ -409,7 +409,7 @@ struct ParamTraits<mozilla::plugins::NPRemoteWindow>
     uint32_t width, height;
     NPRect clipRect;
     NPWindowType type;
-    if (!(aMsg->ReadUInt64(aIter, &window) &&
+    if (!(
 #if defined(XP_OS2)
           ReadParam(aMsg, aIter, &window) &&
 #else
