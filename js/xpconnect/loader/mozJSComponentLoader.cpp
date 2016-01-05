@@ -932,11 +932,19 @@ mozJSComponentLoader::ObjectForLocation(nsIFile *aComponentFile,
 
             if (!mReuseLoaderGlobal) {
                 script = JS::Compile(cx, obj, options, buf,
+#ifdef XP_OS2
+                                     rlen);
+#else
                                      fileSize32);
+#endif
             } else {
                 function = JS::CompileFunction(cx, obj, options,
                                                nullptr, 0, nullptr,
+#ifdef XP_OS2
+                                               buf, rlen);
+#else
                                                buf, fileSize32);
+#endif
             }
 
             free(buf);

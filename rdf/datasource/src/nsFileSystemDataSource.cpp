@@ -39,7 +39,8 @@
 #endif
 
 #ifdef XP_OS2
-#define INCL_DOSFILEMGR
+#define INCL_BASE
+#define INCL_PM
 #include <os2.h>
 #endif
 
@@ -880,21 +881,21 @@ FileSystemDataSource::GetVolumeList(nsISimpleEnumerator** aResult)
     ULONG ulDriveNo = 0;
     ULONG ulDriveMap = 0;
 
-    rv = DosQueryCurrentDisk(&ulDriveNo, &ulDriveMap);
-    if (NS_FAILED(rv))
-        return rv;
-
-    for (int volNum = 0; volNum < 26; volNum++)
+    APIRET rc = DosQueryCurrentDisk(&ulDriveNo, &ulDriveMap);
+    if (rc == NO_ERROR)
     {
-        if (((ulDriveMap << (31 - volNum)) >> 31))
+        for (int volNum = 0; volNum < 26; volNum++)
         {
-          nsAutoCString url;
-          url.AppendPrintf("file:///%c|/", volNum + 'A');
-          rv = mRDFService->GetResource(nsDependentCString(url), getter_AddRefs(vol));
-
-          if (NS_FAILED(rv)) return rv;
-                volumes.AppendObject(vol);
-        }
+            if (((ulDriveMap << (31 - volNum)) >> 31))
+            {
+              nsAutoCString url;
+              url.AppendPrintf("file:///%c|/", volNum + 'A');
+              rv = mRDFService->GetResource(url, getter_AddRefs(vol));
+              if (NS_FAILED(rv))
+                return rv;
+              volumes.AppendObject(vol);
+            }
+         }
 
     }
 #endif

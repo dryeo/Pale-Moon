@@ -44,11 +44,13 @@ using mozilla::gfx::SharedDIB;
 #include "mozilla/Util.h"
 #include "mozilla/ipc/SyncChannel.h"
 #include "mozilla/AutoRestore.h"
+#include "ImageContainer.h"
 
 using namespace mozilla;
 using mozilla::ipc::ProcessChild;
 using namespace mozilla::plugins;
 using namespace mozilla::layers;
+using namespace mozilla::gfx;
 using namespace std;
 
 #ifdef MOZ_WIDGET_GTK
@@ -3008,6 +3010,8 @@ PluginInstanceChild::DoAsyncSetWindow(const gfxSurfaceType& aSurfaceType,
         }
         mCurrentAsyncSetWindowTask = nullptr;
     }
+ // Used to track whether we actually change any window property values.
+ bool windowChanged = false;
 
     mWindow.window = NULL;
     if (mWindow.width != aWindow.width || mWindow.height != aWindow.height ||
