@@ -104,8 +104,15 @@ if test -z "$GNU_CC"; then
 fi
 
 if test "$GNU_CC"; then
+case "$target" in
+*-os2*)
+    CXXFLGS="CXXFLAGS -fno-exception"
+;;
+*)
     CFLAGS="$CFLAGS -ffunction-sections -fdata-sections"
     CXXFLAGS="$CXXFLAGS -ffunction-sections -fdata-sections -fno-exceptions"
+;;
+esac
 fi
 
 dnl ========================================================
