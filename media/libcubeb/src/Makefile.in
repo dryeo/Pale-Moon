@@ -85,6 +85,13 @@ DISABLED_CSRCS           += \
 DEFINES         += -DUSE_PULSE
 endif
 
+ifdef MOZ_LIBKAI
+DISABLED_CSRCS		+= \
+		CUBEB_KAI.C \
+		$(NULL)
+DEFINES		+= -DUSE_KAI
+endif
+
 include $(topsrcdir)/config/rules.mk
 
 CFLAGS += \
