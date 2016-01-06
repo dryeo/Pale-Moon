@@ -2354,15 +2354,14 @@ const nsXREAppData* gAppData = nullptr;
 // handler. This helper also installs the EXCEPTQ handler on the current thread to make sure it
 // is chained so that it gets control after the FPU exception handler. This can't be done with
 // ScopedExceptqLoader since the proper stack order for locals is not guaranteed by the compiler.
- class ScopedFPHandler {
- private:
+class ScopedFPHandler {
+private:
   // For arrays it's guaranteed that &[0] < &[1] which we use to make sure that the registration
   // record of the top (last) exception handler has a smaller address (i.e. located lower on the
   // stack) — this is a requirement of the SEH logic.
   EXCEPTIONREGISTRATIONRECORD excpreg[2];
- 
- public:
 
+public:
   ScopedFPHandler() {
     LoadExceptq(&excpreg[1], NULL, NULL);
     PR_OS2_SetFloatExcpHandler(&excpreg[0]);
@@ -2371,8 +2370,6 @@ const nsXREAppData* gAppData = nullptr;
     PR_OS2_UnsetFloatExcpHandler(&excpreg[0]);
     UninstallExceptq(&excpreg[1]);
   }
- };
- #endif
 
 };
 #endif
