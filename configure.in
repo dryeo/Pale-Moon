@@ -2275,7 +2275,10 @@ ia64*-hpux*)
     BIN_FLAGS='-Zlinker /ST:0x100000'
     IMPLIB='emximp -o'
     FILTER='true'
-    LDFLAGS="-Zomf -Zmap"
+    LDFLAGS="$LDFLAGS -Zomf -Zmap"
+    if test "$EMXOMFLD_TYPE" = "WLINK" -o "$EMXOMFLD_TYPE" = "wlink"; then
+        LDFLAGS="$LDFLAGS -Zlinker 'DISABLE 1121'"
+    fi
     WARNINGS_AS_ERRORS='-Werror'
     MOZ_DEBUG_FLAGS="-fno-inline"
     MOZ_OPTIMIZE_FLAGS="-O2"
@@ -7847,7 +7850,7 @@ dnl ========================================================
 dnl Check for gcc -pipe support
 dnl ========================================================
 AC_MSG_CHECKING([for -pipe support])
-if test -n "$GNU_CC" -a -n "$GNU_CXX"; then
+if test "$OS_ARCH" != "OS2" -a -n "$GNU_CC" -a -n "$GNU_CXX"; then
     dnl Any gcc that supports firefox supports -pipe.
     CFLAGS="$CFLAGS -pipe"
     CXXFLAGS="$CXXFLAGS -pipe"
@@ -8265,7 +8268,7 @@ if test "$MOZ_TREE_CAIRO"; then
     AC_SUBST(TEE_SURFACE_FEATURE)
 
     MOZ_CAIRO_LIBS='$(call EXPAND_LIBNAME_PATH,mozcairo,$(DEPTH)/gfx/cairo/cairo/src)'" $CAIRO_FT_LIBS"
-    MOZ_CAIRO_OSLIBS='${CAIRO_FT_OSLIBS}'
+    MOZ_CAIRO_OSLIBS="${CAIRO_FT_OSLIBS}"
 
     if test "$MOZ_X11"; then
         MOZ_CAIRO_OSLIBS="$MOZ_CAIRO_OSLIBS $XLDFLAGS -lXrender"
