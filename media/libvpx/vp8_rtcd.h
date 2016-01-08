@@ -38,6 +38,10 @@
 /* 64 bit ELF platforms. */
 #include "vp8_rtcd_x86_64-linux-gcc.h"
 
+#elif defined(__OS2__)
+/* OS/2 GCC */
+#include "vp8_rtcd_x86-os2-gcc.h"
+
 #elif defined(VPX_ARM_ASM)
 /* Android */
 #include "vp8_rtcd_armv7-android-gcc.h"
