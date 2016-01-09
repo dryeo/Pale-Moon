@@ -194,7 +194,7 @@
       *  on the other fields of |mode|. If neither |truncate| nor
       *  |create| is specified, the file is opened for appending.
       * - {bool} text If |true|, the file will be opened in O_TEXT mode
-      *  on platofmrs that have such support (e.g. OS/2). This mode
+      *  on platfroms that have such support (e.g. OS/2). This mode
       *  translates LF to CRLF on output and CRLF back to LF on input.
       *  If text is |false| or not specified, O_BINARY is used (which
       *  assumes no translation).

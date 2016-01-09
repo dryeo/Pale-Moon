@@ -42,7 +42,7 @@ if (typeof Components != "undefined") {
   let libc_candidates;
   let libc_func;
   if (OS.Constants.OS2) {
-    libc_candidates =  [ "libc065.dll", "libc064.dll" ];
+    libc_candidates =  [ "libc066.dll", "libc065.dll" ];
     libc_func = function libc_func(name) {
       return "_std_" + name;
     };
