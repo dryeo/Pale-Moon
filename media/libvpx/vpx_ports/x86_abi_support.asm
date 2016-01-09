@@ -378,8 +378,6 @@ section .text
 %endmacro
 %elifidn __OUTPUT_FORMAT__,aout
 %define SECTION_RODATA section .data
-%elifidn __OUTPUT_FORMAT__,obj
-%define SECTION_RODATA section .rodata use32 class=data
 %else
 %define SECTION_RODATA section .rodata
 %endif
@@ -408,3 +406,11 @@ extern sym(rand)
 %define LIBVPX_RAND rand
 %endif
 %endif ; CONFIG_POSTPROC || CONFIG_VP9_POSTPROC
+
+; OMF needs special handling to ensure everything is in the same segment
+; and that the segment is 32 bit.
+%ifidn __OUTPUT_FORMAT__,obj
+%define SECTION_RODATA section .text
+section .text align=16 use32 class=CODE
+group CGROUP text
+%endif

@@ -88,6 +88,9 @@
         fakegot:
     %elifidn __OUTPUT_FORMAT__,aout
         section .text
+    %elifidn __OUTPUT_FORMAT__,obj
+         section .text align=16 use32 class=CODE
+         group CGROUP text
     %else
         SECTION .rodata align=%1
     %endif
