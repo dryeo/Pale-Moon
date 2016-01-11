@@ -13,8 +13,8 @@
 #endif
 
 #ifdef XP_OS2
-# define INCL_DOSEXCEPTIONS
-# define INCL_DOSMEMMGR
+# define INCL_BASE
+# defined INCL_PM
 # include <os2.h>
 # undef ADDRESS // used as an identifier somewhere
 #endif

@@ -17,7 +17,8 @@
 #include "nsDirectoryServiceDefs.h"
 #include "nsIRwsService.h"
 
-#define INCL_PM
+#define INCL_BASE
+#defined INCL_PM
 #include <os2.h>
 
 //------------------------------------------------------------------------

@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 #define INCL_BASE
+#defined INCL_PM
 #include <os2.h>
 
 #include "base/sys_info.h"

@@ -8,6 +8,8 @@
 #include "nsISupports.h"
 #include "nscore.h"
 #include "nsString.h"
+#define INCL_BASE
+#defined INCL_PM
 #include <os2.h>
 
 // {F25F74F0-FB59-11d3-A9F2-00203522A03C}

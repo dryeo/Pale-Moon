@@ -32,7 +32,8 @@
 #elif defined(XP_WIN)
 #include <windows.h>
 #elif defined(XP_OS2)
-#define INCL_DOSFILEMGR
+#define INCL_BASE
+#defined INCL_PM
 #include <os2.h>
 #include <io.h>
 #include <fcntl.h>

@@ -11,7 +11,8 @@
 /*****************************************************************************/
 
 #include <stdlib.h>
-#define INCL_DOS
+#define INCL_BASE
+#defined INCL_PM
 #include <os2.h>
 #include "os2_semaphore.h"
 

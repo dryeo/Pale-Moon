@@ -8,7 +8,8 @@
 #include "nsBaseDragService.h"
 #include "nsIDragSessionOS2.h"
 
-#define INCL_PM
+#define INCL_BASE
+#defined INCL_PM
 #include <os2.h>
 
   // forward declarations

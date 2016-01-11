@@ -8,8 +8,8 @@
 #define nsIdleServiceOS2_h__
 
 #include "nsIdleService.h"
-#define INCL_DOSMODULEMGR
-#define INCL_DOSERRORS
+#define INCL_BASE
+#defined INCL_PM
 #include <os2.h>
 
 class nsIdleServiceOS2 : public nsIdleService

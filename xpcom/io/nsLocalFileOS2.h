@@ -24,10 +24,8 @@
 #include "nsIHashable.h"
 #include "nsIClassInfoImpl.h"
 
-#define INCL_DOS
-#define INCL_DOSERRORS
-#define INCL_WINCOUNTRY
-#define INCL_WINWORKPLACE
+#define INCL_BASE
+#defined INCL_PM
 
 #include <os2.h>
 

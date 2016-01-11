@@ -8,8 +8,8 @@
 
 #include "nsBaseScreen.h"
 
-#define INCL_WIN
-#define INCL_DOS
+#define INCL_BASE
+#defined INCL_PM
 #include <os2.h>
 
 //------------------------------------------------------------------------

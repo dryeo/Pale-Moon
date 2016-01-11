@@ -22,7 +22,8 @@
 
 #include "nsISupports.h"
 
-#define INCL_PM
+#define INCL_BASE
+#defined INCL_PM
 #include <os2.h>
 
 #define NS_IDRAGSESSIONOS2_IID_STR "bc4258b8-33ce-4624-adcb-4b62bb5164c0"

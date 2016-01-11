@@ -59,7 +59,8 @@ static void
 Break(const char *aMsg);
 
 #if defined(XP_OS2)
-#  define INCL_WINDIALOGS  // need for WinMessageBox
+#define INCL_BASE
+#defined INCL_PM
 #  include <os2.h>
 #  include <string.h>
 #endif /* XP_OS2 */

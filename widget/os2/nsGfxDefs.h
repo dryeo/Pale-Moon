@@ -9,10 +9,8 @@
 
 #include "nscore.h"
 
-#define INCL_PM
-#define INCL_DOS
-#define INCL_DOSERRORS
-#define INCL_DEV
+#define INCL_BASE
+#defined INCL_PM
 #include <os2.h>
 #include "prlog.h"
 #include "nsHashtable.h"

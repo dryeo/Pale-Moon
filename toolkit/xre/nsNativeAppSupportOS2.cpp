@@ -8,10 +8,8 @@
 #include <os2safe.h>
 #endif
 
-#define INCL_PM
-#define INCL_GPI
-#define INCL_DOS
-#define INCL_DOSERRORS
+#define INCL_BASE
+#defined INCL_PM
 #include <os2.h>
 
 #include "nsNativeAppSupportBase.h"

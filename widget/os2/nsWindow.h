@@ -50,10 +50,8 @@
 #include "nsBaseWidget.h"
 #include "gfxASurface.h"
 
-#define INCL_DOS
-#define INCL_WIN
-#define INCL_NLS
-#define INCL_GPI
+#define INCL_BASE
+#defined INCL_PM
 #include <os2.h>
 #include <os2im.h>
 

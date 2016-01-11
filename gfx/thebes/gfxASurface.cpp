@@ -39,6 +39,8 @@
 #endif
 
 #ifdef CAIRO_HAS_OS2_SURFACE
+#define INCL_BASE
+#defined INCL_PM
 #include <os2.h>
 #include "gfxOS2Surface.h"
 #endif

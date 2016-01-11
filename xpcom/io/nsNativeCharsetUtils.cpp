@@ -983,7 +983,8 @@ NS_ConvertWtoA(const PRUnichar *aStrInW, int aBufferSizeOut,
 //-----------------------------------------------------------------------------
 #elif defined(XP_OS2)
 
-#define INCL_DOS
+#define INCL_BASE
+#defined INCL_PM
 #include <os2.h>
 #include <uconv.h>
 #include "nsAString.h"

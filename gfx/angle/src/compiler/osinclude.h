@@ -31,7 +31,8 @@
 #define VC_EXTRALEAN 1
 #include <windows.h>
 #elif defined(ANGLE_OS_OS2)
-#define INCL_DOS
+#define INCL_BASE
+#defined INCL_PM
 #include <os2.h>
 #elif defined(ANGLE_OS_POSIX)
 #include <pthread.h>
