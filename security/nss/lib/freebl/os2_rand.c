@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #define INCL_BASE
-#defined INCL_PM
+#define INCL_PM
 #include <os2.h>
 #include "secrng.h"
 #include "prerror.h"

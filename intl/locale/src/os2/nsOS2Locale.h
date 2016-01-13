@@ -10,7 +10,7 @@
 #include "nsString.h"
 #include "nsIOS2Locale.h"
 #define INCL_BASE
-#defined INCL_PM
+#define INCL_PM
 #include <os2.h>
 
 

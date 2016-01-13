@@ -14,7 +14,7 @@
 #include "nsEscape.h"
 
 #define INCL_BASE
-#defined INCL_PM
+#define INCL_PM
 #include <os2.h>
 
 class nsMIMEInfoOS2 : public nsMIMEInfoBase, public nsIPropertyBag

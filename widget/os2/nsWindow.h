@@ -51,7 +51,9 @@
 #include "gfxASurface.h"
 
 #define INCL_BASE
-#defined INCL_PM
+#define INCL_PM
+// too pity the above two don't include this one (looks like a bug):
+#define INCL_NLS
 #include <os2.h>
 #include <os2im.h>
 

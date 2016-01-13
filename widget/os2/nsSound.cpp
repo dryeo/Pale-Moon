@@ -12,7 +12,7 @@
 #include <stdlib.h>
 
 #define INCL_BASE
-#defined INCL_PM
+#define INCL_PM
 #include <os2.h>
 #include <mmioos2.h>
 #include <mcios2.h>

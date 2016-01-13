@@ -27,7 +27,7 @@
 #define PATH_SEPARATOR_CHAR '/'
 #elif defined (XP_OS2)
 #define INCL_BASE
-#defined INCL_PM
+#define INCL_PM
 #include <os2.h>
 #include <unistd.h>
 #include <sys/types.h>

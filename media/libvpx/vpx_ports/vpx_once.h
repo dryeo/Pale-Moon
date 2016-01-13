@@ -75,7 +75,7 @@ static void once(void (*func)(void))
 
 #elif CONFIG_MULTITHREAD && defined(__OS2__)
 #define INCL_BASE
-#defined INCL_PM
+#define INCL_PM
 #include <os2.h>
 static void once(void (*func)(void))
 {

@@ -6,7 +6,7 @@
 
 /* OS/2-specific local file uri parsing */
 #define INCL_BASE
-#defined INCL_PM
+#define INCL_PM
 #include <os2.h>
 #include "nsURLHelper.h"
 #include "nsEscape.h"

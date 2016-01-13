@@ -56,7 +56,7 @@
 #include <process.h>
 #include <float.h>
 #define INCL_BASE
-#defined INCL_PM
+#define INCL_PM
 #include <os2.h>
 #else
 #include <unistd.h>

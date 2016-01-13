@@ -139,7 +139,7 @@ using mozilla::DefaultXDisplay;
 
 #ifdef XP_OS2
 #define INCL_BASE
-#defined INCL_PM
+#define INCL_PM
 #include <os2.h>
 #include "gfxOS2Surface.h"
 #endif

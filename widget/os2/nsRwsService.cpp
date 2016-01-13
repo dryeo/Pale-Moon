@@ -16,7 +16,7 @@
 #include "mozilla/Services.h"
 
 #define INCL_BASE
-#defined INCL_PM
+#define INCL_PM
 #include <os2.h>
 
 // nsRwsService must be included _after_ os2.h

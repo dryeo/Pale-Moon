@@ -32,7 +32,7 @@
 #include <windows.h>
 #elif defined(ANGLE_OS_OS2)
 #define INCL_BASE
-#defined INCL_PM
+#define INCL_PM
 #include <os2.h>
 #elif defined(ANGLE_OS_POSIX)
 #include <pthread.h>
