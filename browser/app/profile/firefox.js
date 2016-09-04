@@ -909,7 +909,7 @@ pref("dom.ipc.plugins.enabled.x86_64", true);
 #else
 #ifdef XP_OS2
 // Disable OOP mode until IPC code is finished
-pref("dom.ipc.plugins.enabled, false);
+pref("dom.ipc.plugins.enabled", false);
 #endif
 pref("dom.ipc.plugins.enabled", true);
 #endif
